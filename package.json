@@ -1,0 +1,24 @@
+{
+    "name": "babylonjs-editor-quixel-plugin",
+    "version": "1.0.0",
+    "description": "",
+    "main": "build/src/index.js",
+    "author": {
+        "name": "Julien Moreau-Mathis",
+        "url": "https://medium.com/@Luaacro"
+    },
+    "scripts": {
+        "watch": "tsc -p . --watch"
+    },
+    "devDependencies": {
+        "@types/fs-extra": "8.1.0",
+        "@types/http-server": "0.10.0",
+        "@types/node": "13.9.0",
+        "babylonjs-editor": "4.0.0-beta.2",
+        "typescript": "3.7.5"
+    },
+    "dependencies": {
+        "fs-extra": "8.1.0",
+        "zlibjs": "0.3.1"
+    }
+}
