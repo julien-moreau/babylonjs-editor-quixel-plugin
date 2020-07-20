@@ -2,8 +2,13 @@ import * as React from "react";
 import { Editor, IPlugin } from "babylonjs-editor";
 
 import { Toolbar } from "./toolbar";
+
+import { QuixelPluginPreferencesInspector } from "./inspectors/preferences-inspector";
+import { QuixelPBRMaterialInspector } from "./inspectors/pbr-inspector";
+
 import { QuixelListener } from "./quixel/listener";
 import { QuixelServer } from "./quixel/server";
+import { exportPreferences, importPreferences } from "./quixel/preferences";
 
 /**
  * Registers the plugin by returning the IPlugin content.
@@ -11,7 +16,10 @@ import { QuixelServer } from "./quixel/server";
  */
 export const registerEditorPlugin = (editor: Editor): IPlugin => {
     QuixelServer.Connect();
-    new QuixelListener(editor);
+    QuixelListener.Init(editor);
+
+    QuixelPluginPreferencesInspector.Register();
+    QuixelPBRMaterialInspector.Register();
 
     return {
         /**
@@ -29,7 +37,7 @@ export const registerEditorPlugin = (editor: Editor): IPlugin => {
          * saves the project.
          */
         getWorkspacePreferences: () => {
-            return { myProperty: "I'm preferences of the plugin" };
+            return exportPreferences();
         },
 
         /**
@@ -38,7 +46,7 @@ export const registerEditorPlugin = (editor: Editor): IPlugin => {
          * the current plugin.
          */
         setWorkspacePreferences: (preferences: any) => {
-            console.log(preferences);
+            importPreferences(preferences);
         }
     };
 }

@@ -3,6 +3,7 @@ import { Menu, MenuItem } from "@blueprintjs/core";
 
 import { Editor } from "babylonjs-editor";
 import { QuixelServer } from "./quixel/server";
+import { QuixelPreferences } from "./quixel/preferences";
 
 export interface IToolbarProps {
     /**
@@ -19,6 +20,7 @@ export class Toolbar extends React.Component<IToolbarProps> {
         return (
             <Menu>
                 <MenuItem text="Restart..." icon="exchange" onClick={() => this._handleRestartServer()} />
+                <MenuItem text="Preferences..." icon="settings" onClick={() => this._handleShowPreferences()} />
             </Menu>
         );
     }
@@ -28,5 +30,12 @@ export class Toolbar extends React.Component<IToolbarProps> {
      */
     private _handleRestartServer(): void {
         QuixelServer.Restart();
+    }
+
+    /**
+     * Called on the user wants to edit the preferences of the plugin.
+     */
+    private _handleShowPreferences(): void {
+        this.props.editor.inspector.setSelectedObject(new QuixelPreferences());
     }
 }

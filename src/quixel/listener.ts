@@ -12,8 +12,17 @@ import { QuixelServer } from "./server";
 import { IQuixelExport, IQuixelLOD } from "./types";
 
 import { FBXLoader } from "../fbx/loader";
+import { preferences } from "./preferences";
 
 export class QuixelListener {
+    /**
+     * Inits the quixel listener.
+     * @param editor the editor reference.
+     */
+    public static Init(editor: Editor): void {
+        new QuixelListener(editor);
+    }
+
     private _computing: boolean = false;
     private _queue: IQuixelExport[] = [];
 
@@ -74,6 +83,7 @@ export class QuixelListener {
             // Create material
             if (!meshes.length) {
                 mesh.name = json.name;
+                mesh.scaling.scale(preferences.objectScale);
 
                 // Add to shadows
                 this._editor.scene!.lights.forEach((l) => {
@@ -142,6 +152,7 @@ export class QuixelListener {
     private async _parseMaterial(json: IQuixelExport): Promise<Nullable<PBRMaterial>> {
         const material = new PBRMaterial(json.name, this._editor.scene!);
         material.id = BabylonTools.RandomId();
+        material.ambientColor.copyFrom(preferences.ambientColor);
         material.metadata = {
             isFromQuixel: true,
         };
@@ -158,6 +169,7 @@ export class QuixelListener {
                 case "albedo": material.albedoTexture = this._getTexture(c.name); break;
                 case "normal": material.bumpTexture = this._getTexture(c.name); break;
                 case "specular": material.reflectivityTexture = this._getTexture(c.name); break;
+                case "gloss": material.microSurfaceTexture = this._getTexture(c.name); break;
                 case "roughness":
                     material.metallicTexture = this._getTexture(c.name);
                     material.useRoughnessFromMetallicTextureGreen = true;
