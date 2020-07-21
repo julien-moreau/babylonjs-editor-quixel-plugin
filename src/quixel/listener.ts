@@ -50,10 +50,13 @@ export class QuixelListener {
 
             switch (json.type) {
                 case "3d": await this._handle3dExport(json); break;
+                case "3dplant": await this._handle3dPlantExport(json); break;
+                
                 case "surface":
                 case "atlas":
                     await this._handleSurfaceExport(json);
                     break;
+                
                 default: break;
             }
         }
@@ -118,6 +121,14 @@ export class QuixelListener {
     }
 
     /**
+     * Handles the given quixel export json as a 3d asset.
+     */
+    private async _handle3dPlantExport(json: IQuixelExport): Promise<void> {
+        // TODO: manage plants.
+        this._handle3dExport(json);
+    }
+
+    /**
      * Parses the mesh using the given content.
      */
     private _parseMesh(lod: IQuixelLOD, lodContent: Buffer): Nullable<Mesh> {
@@ -127,7 +138,7 @@ export class QuixelListener {
 
         const mesh = new Mesh(lod.lodObjectName, this._editor.scene!);
         mesh.id = BabylonTools.RandomId();
-        mesh.scaling.set(0.1, 0.1, 0.1);
+        mesh.scaling.set(preferences.objectScale, preferences.objectScale, preferences.objectScale);
         mesh.receiveShadows = true;
         mesh.rotate(new Vector3(1, 0, 0), -Math.PI * 0.5, Space.LOCAL);
         mesh.isPickable = false;
@@ -140,8 +151,6 @@ export class QuixelListener {
 
         const geometry = new Geometry(BabylonTools.RandomId(), this._editor.scene!, vertexData, false);
         geometry.applyToMesh(mesh);
-
-        mesh.isUnIndexed = true;
 
         return mesh;
     }

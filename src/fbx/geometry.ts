@@ -12,6 +12,7 @@ export interface IFBXParsedData {
 
 export interface IFBXBuffers {
     vertex: number[],
+    index: number[],
     normal: number[],
     uvs: number[],
 }
@@ -40,7 +41,7 @@ export class FBXGeometry {
 
         return {
             positions: buffers.vertex,
-            // indices: buffers.indices,
+            indices: buffers.index,
             normals: buffers.normal,
             uvs: buffers.uvs,
         };
@@ -52,6 +53,7 @@ export class FBXGeometry {
     private _genBuffers(geoInfo: IFBXGeometryInformations): IFBXBuffers {
         const buffers: IFBXBuffers = {
             vertex: [],
+            index: [],
             normal: [],
             uvs: [],
         };
@@ -95,10 +97,10 @@ export class FBXGeometry {
             }
 
             faceLength++;
-
+            
             if (endOfFace) {
                 this._genFace(buffers, geoInfo, facePositionIndexes, faceNormals, faceUVs, faceLength);
-
+                
                 polygonIndex++;
                 faceLength = 0;
 
@@ -128,6 +130,10 @@ export class FBXGeometry {
             buffers.vertex.push(geoInfo.vertexPositions[facePositionIndexes[i * 3]]);
             buffers.vertex.push(geoInfo.vertexPositions[facePositionIndexes[i * 3 + 2]]);
             buffers.vertex.push(geoInfo.vertexPositions[facePositionIndexes[i * 3 + 1]]);
+
+            buffers.index.push(buffers.index.length);
+            buffers.index.push(buffers.index.length);
+            buffers.index.push(buffers.index.length);
 
             if (geoInfo.normal) {
                 buffers.normal.push(faceNormals[0]);

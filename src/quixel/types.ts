@@ -42,7 +42,7 @@ export interface IQuixelExport {
     /**
      * Defines the type of asset.
      */
-    type: "3d" | "surface" | "atlas";
+    type: "3d" | "surface" | "atlas" | "3dplant";
     /**
      * Defines the list of all available FBX files.
      */
