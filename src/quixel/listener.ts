@@ -15,12 +15,13 @@ import { FBXLoader } from "../fbx/loader";
 import { preferences } from "./preferences";
 
 export class QuixelListener {
+    private static _Instance: Nullable<QuixelListener> = null;
     /**
      * Inits the quixel listener.
      * @param editor the editor reference.
      */
     public static Init(editor: Editor): void {
-        new QuixelListener(editor);
+        this._Instance = this._Instance ?? new QuixelListener(editor);
     }
 
     private _computing: boolean = false;
@@ -72,6 +73,7 @@ export class QuixelListener {
 
         // Fbx
         for (const lod of json.lodList) {
+            this._editor.console.logInfo(`Parsing FBX mesh from Quixel Bridge at path: "${lod.path}"`);
             const lodContent = await readFile(lod.path);
 
             // Check if the FBX file is 

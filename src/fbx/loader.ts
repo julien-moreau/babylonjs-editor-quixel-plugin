@@ -201,42 +201,44 @@ export class FBXLoader {
             // String
             case "S": return this._stream.readString(this._stream.readUint32());
             // Int64
-            case 'L': return this._stream.readInt64();
+            case "L": return this._stream.readInt64();
+            // Float 32
+            case "F": return this._stream.readFloat32();
             // Float 64
-            case 'D': return this._stream.readFloat64();
+            case "D": return this._stream.readFloat64();
             // Array buffer
             case "R": return this._stream.readArrayBuffer(this._stream.readUint32());
 
-            case 'b':
-            case 'c':
-            case 'd':
-            case 'f':
-            case 'i':
-            case 'l':
+            case "b":
+            case "c":
+            case "d":
+            case "f":
+            case "i":
+            case "l":
                 const arrayLength = this._stream.readUint32();
                 const encoding = this._stream.readUint32(); // 0: non-compressed, 1: compressed
                 const compressedLength = this._stream.readUint32();
 
                 if (encoding === 0) {
                     switch (type) {
-                        case 'b':
-                        case 'c': return this._stream.readBoolArray(arrayLength);
-                        case 'd': return this._stream.readFloat64Array(arrayLength);
-                        case 'f': return this._stream.readFloat32Array(arrayLength);
-                        case 'i': return this._stream.readInt32Array(arrayLength);
-                        case 'l': return this._stream.readInt64Array(arrayLength);
+                        case "b":
+                        case "c": return this._stream.readBoolArray(arrayLength);
+                        case "d": return this._stream.readFloat64Array(arrayLength);
+                        case "f": return this._stream.readFloat32Array(arrayLength);
+                        case "i": return this._stream.readInt32Array(arrayLength);
+                        case "l": return this._stream.readInt64Array(arrayLength);
                     }
                 }
 
                 const inflate = inflateSync(this._stream.readArrayBuffer(compressedLength));
                 const stream = new FBXStream(inflate);
                 switch (type) {
-                    case 'b':
-                    case 'c': return stream.readBoolArray(arrayLength);
-                    case 'd': return stream.readFloat64Array(arrayLength);
-                    case 'f': return stream.readFloat32Array(arrayLength);
-                    case 'i': return stream.readInt32Array(arrayLength);
-                    case 'l': return stream.readInt64Array(arrayLength);
+                    case "b":
+                    case "c": return stream.readBoolArray(arrayLength);
+                    case "d": return stream.readFloat64Array(arrayLength);
+                    case "f": return stream.readFloat32Array(arrayLength);
+                    case "i": return stream.readInt32Array(arrayLength);
+                    case "l": return stream.readInt64Array(arrayLength);
                 }
             default:
                 throw new Error(`Parse property not implemented for property type: "${type}"`);

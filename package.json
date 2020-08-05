@@ -1,6 +1,6 @@
 {
     "name": "babylonjs-editor-quixel-plugin",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "",
     "main": "build/src/index.js",
     "author": {
@@ -8,16 +8,17 @@
         "url": "https://medium.com/@Luaacro"
     },
     "scripts": {
+        "build": "tsc -p .",
         "watch": "tsc -p . --watch"
     },
     "devDependencies": {
         "@types/fs-extra": "8.1.0",
         "@types/http-server": "0.10.0",
         "@types/node": "13.9.0",
-        "babylonjs-editor": "4.0.0-beta.2",
         "typescript": "3.7.5"
     },
     "dependencies": {
+        "babylonjs-editor": "4.0.0-beta.4",
         "fs-extra": "8.1.0",
         "zlibjs": "0.3.1"
     }

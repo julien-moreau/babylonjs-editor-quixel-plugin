@@ -2,6 +2,7 @@ import * as React from "react";
 import { Menu, MenuItem } from "@blueprintjs/core";
 
 import { Editor } from "babylonjs-editor";
+
 import { QuixelServer } from "./quixel/server";
 import { QuixelPreferences } from "./quixel/preferences";
 
