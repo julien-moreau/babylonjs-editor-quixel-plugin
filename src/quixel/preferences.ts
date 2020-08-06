@@ -10,11 +10,18 @@ export interface IQuixelPreferences {
      * By default, all ambient colors are equal to 0,0,0.
      */
     ambientColor: Color3;
+
+    /**
+     * Defines wether or not 
+     */
+    automaticallyAddToScene?: boolean;
 }
 
 export const preferences: IQuixelPreferences = {
     objectScale: 1,
     ambientColor: Color3.Black(),
+
+    automaticallyAddToScene: true,
 };
 
 /**
@@ -23,6 +30,8 @@ export const preferences: IQuixelPreferences = {
 export const exportPreferences = () => ({
     objectScale: preferences.objectScale,
     ambientColor: preferences.ambientColor.asArray(),
+    
+    automaticallyAddToScene: preferences.automaticallyAddToScene,
 });
 
 /**
@@ -32,6 +41,8 @@ export const importPreferences = (config: any) => {
     if (!config.objectScale) { return; }
     preferences.objectScale = config.objectScale;
     preferences.ambientColor = Color3.FromArray(config.ambientColor);
+
+    preferences.automaticallyAddToScene = config.automaticallyAddToScene ?? true;
 };
 
 export class QuixelPreferences {

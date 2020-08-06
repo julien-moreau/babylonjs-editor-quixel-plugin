@@ -1,12 +1,13 @@
-import { readFile } from "fs-extra";
-import { basename } from "path";
+import { basename, join, dirname } from "path";
+import { readFile, writeJSON, remove, copy } from "fs-extra";
 
 import {
     Nullable,
     Geometry, Tools as BabylonTools, Vector3,
     VertexData, Mesh, PBRMaterial, Space, Texture,
+    NullEngine, Scene, SceneSerializer,
 } from "babylonjs";
-import { Editor } from "babylonjs-editor";
+import { Editor, MeshesAssets, Project, FilesStore } from "babylonjs-editor";
 
 import { QuixelServer } from "./server";
 import { IQuixelExport, IQuixelLOD } from "./types";
@@ -16,6 +17,7 @@ import { preferences } from "./preferences";
 
 export class QuixelListener {
     private static _Instance: Nullable<QuixelListener> = null;
+
     /**
      * Inits the quixel listener.
      * @param editor the editor reference.
@@ -71,6 +73,13 @@ export class QuixelListener {
     private async _handle3dExport(json: IQuixelExport): Promise<void> {
         const meshes: Mesh[] = [];
 
+        const engine = preferences.automaticallyAddToScene ? null : new NullEngine();
+        const scene = preferences.automaticallyAddToScene ? this._editor.scene! : new Scene(engine!);
+
+        const task = this._editor.addTaskFeedback(0, `Processing "${json.name}"`);
+        const step = 100 / json.lodList.length;
+        let currentStep = 0;
+
         // Fbx
         for (const lod of json.lodList) {
             this._editor.console.logInfo(`Parsing FBX mesh from Quixel Bridge at path: "${lod.path}"`);
@@ -82,7 +91,7 @@ export class QuixelListener {
                 continue;
             }
             
-            const mesh = this._parseMesh(lod,  lodContent);
+            const mesh = this._parseMesh(lod, lodContent, scene);
             if (!mesh) { return; }
 
             // Create material
@@ -90,15 +99,21 @@ export class QuixelListener {
                 mesh.name = json.name;
                 mesh.scaling.scale(preferences.objectScale);
 
-                // Add to shadows
-                this._editor.scene!.lights.forEach((l) => {
-                    l.getShadowGenerator()?.getShadowMap()?.renderList?.push(mesh);
-                });
+                // Add to shadows?
+                if (preferences.automaticallyAddToScene) {
+                    this._editor.scene!.lights.forEach((l) => {
+                        l.getShadowGenerator()?.getShadowMap()?.renderList?.push(mesh);
+                    });
+                }
 
-                mesh.material = await this._parseMaterial(json);
+                mesh.material = await this._parseMaterial(json, scene);
             }
 
             meshes.push(mesh);
+
+            // Task feedback.
+            currentStep += step;
+            this._editor.updateTaskFeedback(task, currentStep);
         }
 
         // LODs
@@ -109,6 +124,63 @@ export class QuixelListener {
             m.material = meshes[0].material;
         });
 
+        // Add to assets?
+        if (!preferences.automaticallyAddToScene) {
+            this._editor.updateTaskFeedback(task, 0, `Adding "${json.name}" to assets...`)
+            meshes[0].material?.getActiveTextures().forEach((texture) => {
+                texture.name = basename(texture.name);
+                if (texture["url"]) { texture["url"] = texture.name; }
+            });
+
+            const sceneJson = SceneSerializer.Serialize(scene);
+            sceneJson.meshes.forEach((m) => {
+                if (!m) { return; }
+
+                const mesh = scene.getMeshByID(m.id);
+                if (!mesh || !(mesh instanceof Mesh)) { return; }
+
+                const lods = mesh.getLODLevels();
+                if (!lods.length) { return; }
+
+                m.lodMeshIds = lods.map((lod) => lod.mesh?.id);
+                m.lodDistances = lods.map((lod) => lod.distance);
+                m.lodCoverages = lods.map((lod) => lod.distance);
+            });
+
+            const tempSceneName = `${json.lodList[0].lodObjectName}.babylon`;
+            const tempScenePath = join(dirname(json.path), tempSceneName);
+
+            try {
+                this._editor.updateTaskFeedback(task, 50);
+
+                await writeJSON(tempScenePath, sceneJson);
+
+                this._editor.assets.selectTab(MeshesAssets);
+
+                await this._editor.assets.addFilesToAssets([{
+                    name: tempSceneName,
+                    path: tempScenePath,
+                }]);
+
+                this._editor.updateTaskFeedback(task, 75);
+            } catch (e) {
+                // Catch silently.
+            }
+
+            try {
+                await remove(tempScenePath);
+            } catch (e) {
+                // Catch silently
+            }
+
+            scene.dispose();
+            engine!.dispose();
+        }
+
+        // Feedback
+        this._editor.updateTaskFeedback(task, 100, "Done!");
+        this._editor.closeTaskFeedback(task, 1000);
+
         // Refresh
         this._editor.graph.refresh();
         return this._editor.assets.refresh();
@@ -118,7 +190,7 @@ export class QuixelListener {
      * Handles the given quixel export json as a surface asset.
      */
     private async _handleSurfaceExport(json: IQuixelExport): Promise<void> {
-        await this._parseMaterial(json);
+        await this._parseMaterial(json, this._editor.scene!);
         return this._editor.assets.refresh();
     }
 
@@ -133,12 +205,12 @@ export class QuixelListener {
     /**
      * Parses the mesh using the given content.
      */
-    private _parseMesh(lod: IQuixelLOD, lodContent: Buffer): Nullable<Mesh> {
+    private _parseMesh(lod: IQuixelLOD, lodContent: Buffer, scene: Scene): Nullable<Mesh> {
         const loader = new FBXLoader(lodContent);
         const geometryData = loader.parse();
         if (!geometryData) { return null; }
 
-        const mesh = new Mesh(lod.lodObjectName, this._editor.scene!);
+        const mesh = new Mesh(lod.lodObjectName, scene);
         mesh.id = BabylonTools.RandomId();
         mesh.scaling.set(preferences.objectScale, preferences.objectScale, preferences.objectScale);
         mesh.receiveShadows = true;
@@ -151,7 +223,7 @@ export class QuixelListener {
         vertexData.normals = geometryData.normals ?? [];
         vertexData.uvs = geometryData.uvs ?? [];
 
-        const geometry = new Geometry(BabylonTools.RandomId(), this._editor.scene!, vertexData, false);
+        const geometry = new Geometry(BabylonTools.RandomId(), scene, vertexData, false);
         geometry.applyToMesh(mesh);
 
         return mesh;
@@ -160,8 +232,8 @@ export class QuixelListener {
     /**
      * Parses the material using the given description.
      */
-    private async _parseMaterial(json: IQuixelExport): Promise<Nullable<PBRMaterial>> {
-        const material = new PBRMaterial(json.name, this._editor.scene!);
+    private async _parseMaterial(json: IQuixelExport, scene: Scene): Promise<Nullable<PBRMaterial>> {
+        const material = new PBRMaterial(json.name, scene);
         material.id = BabylonTools.RandomId();
         material.ambientColor.copyFrom(preferences.ambientColor);
         material.metadata = {
@@ -169,37 +241,55 @@ export class QuixelListener {
         };
 
         // Copy textures
-        await this._editor.assets.addFilesToAssets(json.components.map((c) => ({
-            name: c.name,
-            path: c.path,
-        })));
+        if (preferences.automaticallyAddToScene) {
+            await this._editor.assets.addFilesToAssets(json.components.map((c) => ({
+                name: c.name,
+                path: c.path,
+            })));
+        } else {
+            for (const c of json.components) {
+                const texturePath = join(Project.DirPath!, "files", c.name);
+                await copy(c.path, texturePath);
+                FilesStore.List[texturePath] = { path: texturePath, name: c.name };
+            }
+        }
 
         // Apply textures
         json.components.forEach((c) => {
+            let texture: Nullable<Texture> = null;
+
+            if (preferences.automaticallyAddToScene) {
+                texture = this._getTexture(c.name);
+            } else {
+                texture = new Texture(c.path, scene);
+            }
+
+            if (!texture) { return; }
+
             switch (c.type) {
-                case "albedo": material.albedoTexture = this._getTexture(c.name); break;
-                case "normal": material.bumpTexture = this._getTexture(c.name); break;
-                case "specular": material.reflectivityTexture = this._getTexture(c.name); break;
-                case "gloss": material.microSurfaceTexture = this._getTexture(c.name); break;
+                case "albedo": material.albedoTexture = texture; break;
+                case "normal": material.bumpTexture = texture; break;
+                case "specular": material.reflectivityTexture = texture; break;
+                case "gloss": material.microSurfaceTexture = texture; break;
                 case "roughness":
-                    material.metallicTexture = this._getTexture(c.name);
+                    material.metallicTexture = texture;
                     material.useRoughnessFromMetallicTextureGreen = true;
                     material.metallic = 0;
                     material.roughness = 1;
                     break;
                 case "cavity":
                 case "ao":
-                    material.ambientTexture = this._getTexture(c.name);
+                    material.ambientTexture = texture;
                     break;
                 case "opacity":
-                    material.opacityTexture = this._getTexture(c.name);
+                    material.opacityTexture = texture;
                     if (material.opacityTexture) {
                         material.opacityTexture.getAlphaFromRGB = true;
                     }
                     break;
                 case "transmission":
                     material.subSurface.isTranslucencyEnabled = true;
-                    material.subSurface.thicknessTexture = this._getTexture(c.name);
+                    material.subSurface.thicknessTexture = texture;
                     material.subSurface.translucencyIntensity = 1;
                     break;
                 default: break;
@@ -212,8 +302,8 @@ export class QuixelListener {
     /**
      * Gets the texture identified by the given name.
      */
-    private _getTexture(name: string): Texture {
+    private _getTexture(name: string): Nullable<Texture> {
         const texture = this._editor.scene!.textures.find((t) => basename(t.name) === name);
-        return texture instanceof Texture ? texture : null!;
+        return texture instanceof Texture ? texture : null;
     }
 }
