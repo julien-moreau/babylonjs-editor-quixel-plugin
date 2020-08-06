@@ -1,20 +1,8 @@
-import { Inspector, MaterialInspector, MaterialAssets } from "babylonjs-editor";
+import { MaterialInspector, MaterialAssets } from "babylonjs-editor";
 import { PBRMaterial, Texture } from "babylonjs";
 import { GUI } from "dat.gui";
 
 export class QuixelPBRMaterialInspector extends MaterialInspector<PBRMaterial> {
-    /**
-     * Registers the preferences inspector.
-     */
-    public static Register(): void {
-        Inspector.registerObjectInspector({
-            ctor: QuixelPBRMaterialInspector,
-            ctorNames: ["PBRMaterial"],
-            title: "Quixel PBR",
-            isSupported: (o) => MaterialInspector.IsObjectSupported(o, PBRMaterial) && o.metadata?.isFromQuixel === true,
-        });
-    }
-
     private _mapUVScale: number = 0;
 
     /**

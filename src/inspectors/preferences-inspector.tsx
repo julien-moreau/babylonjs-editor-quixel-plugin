@@ -1,19 +1,8 @@
-import { Inspector, AbstractInspector } from "babylonjs-editor";
+import { AbstractInspector } from "babylonjs-editor";
 
 import { QuixelPreferences, preferences } from "../quixel/preferences";
 
 export class QuixelPluginPreferencesInspector extends AbstractInspector<QuixelPreferences> {
-    /**
-     * Registers the preferences inspector.
-     */
-    public static Register(): void {
-        Inspector.registerObjectInspector({
-            ctor: QuixelPluginPreferencesInspector,
-            ctorNames: ["QuixelPreferences"],
-            title: "Quixel Preferences",
-        });
-    }
-
     /**
      * Called on the component did moubnt.
      * @override

@@ -20,8 +20,8 @@ export class Toolbar extends React.Component<IToolbarProps> {
     public render(): React.ReactNode {
         return (
             <Menu>
-                <MenuItem text="Restart..." icon="exchange" onClick={() => this._handleRestartServer()} />
                 <MenuItem text="Preferences..." icon="settings" onClick={() => this._handleShowPreferences()} />
+                <MenuItem text="Restart..." icon="exchange" onClick={() => this._handleRestartServer()} />
             </Menu>
         );
     }
@@ -30,7 +30,9 @@ export class Toolbar extends React.Component<IToolbarProps> {
      * Called on the user wants to show the editor's version.
      */
     private _handleRestartServer(): void {
+        this.props.editor.console.logInfo("Quixel Bridge: restarting server.")
         QuixelServer.Restart();
+        this.props.editor.console.logInfo("Quixel Bridge: restarted server.")
     }
 
     /**

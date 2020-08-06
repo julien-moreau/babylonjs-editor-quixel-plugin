@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Editor, IPlugin } from "babylonjs-editor";
+import { PBRMaterial } from "babylonjs";
+import { Editor, IPlugin, MaterialInspector } from "babylonjs-editor";
 
 import { Toolbar } from "./toolbar";
 
@@ -18,15 +19,29 @@ export const registerEditorPlugin = (editor: Editor): IPlugin => {
     QuixelServer.Connect();
     QuixelListener.Init(editor);
 
-    QuixelPluginPreferencesInspector.Register();
-    QuixelPBRMaterialInspector.Register();
-
     return {
         /**
          * Defines the list of all toolbar elements to add when the plugin has been loaded.
          */
         toolbar: [
             { buttonLabel: "Quixel", buttonIcon: "pin", content: <Toolbar editor={editor} /> }
+        ],
+
+        /**
+         * Defines the list of all inspector elements.
+         */
+        inspectors: [
+            {
+                ctor: QuixelPBRMaterialInspector,
+                ctorNames: ["PBRMaterial"],
+                title: "Quixel PBR",
+                isSupported: (o) => MaterialInspector.IsObjectSupported(o, PBRMaterial) && o.metadata?.isFromQuixel === true,
+            },
+            {
+                ctor: QuixelPluginPreferencesInspector,
+                ctorNames: ["QuixelPreferences"],
+                title: "Quixel Preferences",
+            },
         ],
 
         /**
@@ -47,6 +62,6 @@ export const registerEditorPlugin = (editor: Editor): IPlugin => {
          */
         setWorkspacePreferences: (preferences: any) => {
             importPreferences(preferences);
-        }
+        },
     };
 }

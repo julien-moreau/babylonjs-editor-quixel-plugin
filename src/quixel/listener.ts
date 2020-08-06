@@ -233,6 +233,8 @@ export class QuixelListener {
      * Parses the material using the given description.
      */
     private async _parseMaterial(json: IQuixelExport, scene: Scene): Promise<Nullable<PBRMaterial>> {
+        this._editor.console.logInfo(`Parsing material named "${json.name}"`);
+
         const material = new PBRMaterial(json.name, scene);
         material.id = BabylonTools.RandomId();
         material.ambientColor.copyFrom(preferences.ambientColor);
@@ -242,6 +244,8 @@ export class QuixelListener {
 
         // Copy textures
         if (preferences.automaticallyAddToScene) {
+            this._editor.console.logInfo(`Adding material's textures to assets...`);
+
             await this._editor.assets.addFilesToAssets(json.components.map((c) => ({
                 name: c.name,
                 path: c.path,
