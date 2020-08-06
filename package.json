@@ -1,6 +1,6 @@
 {
     "name": "babylonjs-editor-quixel-plugin",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "description": "",
     "main": "build/src/index.js",
     "author": {
