@@ -10,6 +10,8 @@ export class QuixelPluginPreferencesInspector extends AbstractInspector<QuixelPr
     public onUpdate(): void {
         this._addCommon();
         this._addMesh();
+        this._addCollisions();
+        this._addLod();
     }
 
     /**
@@ -33,5 +35,25 @@ export class QuixelPluginPreferencesInspector extends AbstractInspector<QuixelPr
         const material = this.tool!.addFolder("Material");
         material.open();
         this.addColor(material, "Ambient Color", preferences, "ambientColor");
+    }
+
+    /**
+     * Adds all the collisions editable properties.
+     */
+    private _addCollisions(): void {
+        const collisions = this.tool!.addFolder("Collisions");
+        collisions.open();
+
+        collisions.add(preferences, "checkCollisions").name("Check Collisions");
+        collisions.add(preferences, "checkColiisionsOnLowerLod").name("Check Collisions On Lower LOD");
+    }
+
+    /**
+     * Adds all the LOD editable properties
+     */
+    private _addLod(): void {
+        const lods = this.tool!.addFolder("Level Of Detils");
+        lods.open();
+        lods.add(preferences, "lodDistance").min(5).step(0.01).name("LOD Distance");
     }
 }

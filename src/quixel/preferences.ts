@@ -15,6 +15,20 @@ export interface IQuixelPreferences {
      * Defines wether or not 
      */
     automaticallyAddToScene?: boolean;
+
+    /**
+     * Defines wether or not collisions are enabled.
+     */
+    checkCollisions?: boolean;
+    /**
+     * Defines wether or not collisions are enabled only on the lower LOD.
+     */
+    checkColiisionsOnLowerLod?: boolean;
+
+    /**
+     * Defines the distance used to separate LODs.
+     */
+    lodDistance?: number;
 }
 
 export const preferences: IQuixelPreferences = {
@@ -22,6 +36,11 @@ export const preferences: IQuixelPreferences = {
     ambientColor: Color3.Black(),
 
     automaticallyAddToScene: true,
+
+    checkCollisions: true,
+    checkColiisionsOnLowerLod: true,
+
+    lodDistance: 20,
 };
 
 /**
@@ -32,6 +51,11 @@ export const exportPreferences = () => ({
     ambientColor: preferences.ambientColor.asArray(),
     
     automaticallyAddToScene: preferences.automaticallyAddToScene,
+
+    checkCollisions: preferences.checkCollisions,
+    checkColiisionsOnLowerLod: preferences.checkColiisionsOnLowerLod,
+
+    lodDistance: preferences.lodDistance,
 });
 
 /**
@@ -43,6 +67,11 @@ export const importPreferences = (config: any) => {
     preferences.ambientColor = Color3.FromArray(config.ambientColor);
 
     preferences.automaticallyAddToScene = config.automaticallyAddToScene ?? true;
+
+    preferences.checkCollisions = config.checkCollisions ?? true;
+    preferences.checkColiisionsOnLowerLod = config.checkColiisionsOnLowerLod ?? true;
+
+    preferences.lodDistance = config.lodDistance ?? 20;
 };
 
 export class QuixelPreferences {

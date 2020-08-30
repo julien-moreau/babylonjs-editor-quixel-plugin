@@ -4,8 +4,9 @@ import { Editor, IPlugin, MaterialInspector } from "babylonjs-editor";
 
 import { Toolbar } from "./toolbar";
 
-import { QuixelPluginPreferencesInspector } from "./inspectors/preferences-inspector";
+import { QuixelMeshInspector } from "./inspectors/lod-inspector";
 import { QuixelPBRMaterialInspector } from "./inspectors/pbr-inspector";
+import { QuixelPluginPreferencesInspector } from "./inspectors/preferences-inspector";
 
 import { QuixelListener } from "./quixel/listener";
 import { QuixelServer } from "./quixel/server";
@@ -41,6 +42,12 @@ export const registerEditorPlugin = (editor: Editor): IPlugin => {
                 ctor: QuixelPluginPreferencesInspector,
                 ctorNames: ["QuixelPreferences"],
                 title: "Quixel Preferences",
+            },
+            {
+                ctor: QuixelMeshInspector,
+                ctorNames: ["Mesh"],
+                title: "Quixel Mesh",
+                isSupported: (o) => o.metadata?.isFromQuixel,
             },
         ],
 

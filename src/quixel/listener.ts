@@ -3,11 +3,11 @@ import { readFile, writeJSON, remove, copy } from "fs-extra";
 
 import {
     Nullable,
-    Geometry, Tools as BabylonTools, Vector3,
+    Geometry, Tools as BabylonTools, Vector3, Quaternion,
     VertexData, Mesh, PBRMaterial, Space, Texture,
     NullEngine, Scene, SceneSerializer,
 } from "babylonjs";
-import { Editor, MeshesAssets, Project, FilesStore } from "babylonjs-editor";
+import { Editor, MeshesAssets, Project, FilesStore, MaterialAssets } from "babylonjs-editor";
 
 import { QuixelServer } from "./server";
 import { IQuixelExport, IQuixelLOD } from "./types";
@@ -98,6 +98,10 @@ export class QuixelListener {
             if (!meshes.length) {
                 mesh.name = json.name;
                 mesh.scaling.scale(preferences.objectScale);
+                mesh.metadata = {
+                    isFromQuixel: true,
+                    lodDistance: preferences.lodDistance,
+                };
 
                 // Add to shadows?
                 if (preferences.automaticallyAddToScene) {
@@ -120,7 +124,7 @@ export class QuixelListener {
         meshes.forEach((m, index) => {
             if (index < 1) { return }
 
-            meshes[0].addLODLevel(20 * index, m);
+            meshes[0].addLODLevel(preferences.lodDistance! * index, m);
             m.material = meshes[0].material;
         });
 
@@ -177,21 +181,41 @@ export class QuixelListener {
             engine!.dispose();
         }
 
+        // Collisions
+        if (preferences.checkCollisions) {
+            if (preferences.checkColiisionsOnLowerLod) {
+                const lastMesh = meshes[meshes.length - 1];
+                lastMesh.metadata = lastMesh.metadata ?? { };
+                lastMesh.metadata.keepGeometryInline = true;
+
+                const collisionInstance = lastMesh?.createInstance("collisionsInstance");
+                collisionInstance.checkCollisions = true;
+                collisionInstance.parent = meshes[0];
+                collisionInstance.isVisible = false;
+                collisionInstance.id = BabylonTools.RandomId();
+                collisionInstance.rotationQuaternion = Quaternion.Identity();
+            } else {
+                meshes[0].checkCollisions = true;
+            }
+        }
+
         // Feedback
         this._editor.updateTaskFeedback(task, 100, "Done!");
         this._editor.closeTaskFeedback(task, 1000);
 
         // Refresh
         this._editor.graph.refresh();
-        return this._editor.assets.refresh();
+        return this._editor.assets.refresh(MaterialAssets, meshes[0].material);
     }
 
     /**
      * Handles the given quixel export json as a surface asset.
      */
     private async _handleSurfaceExport(json: IQuixelExport): Promise<void> {
-        await this._parseMaterial(json, this._editor.scene!);
-        return this._editor.assets.refresh();
+        const material = await this._parseMaterial(json, this._editor.scene!);
+        if (material) {
+            return this._editor.assets.refresh(MaterialAssets, material);
+        }
     }
 
     /**
@@ -274,12 +298,13 @@ export class QuixelListener {
                 case "albedo": material.albedoTexture = texture; break;
                 case "normal": material.bumpTexture = texture; break;
                 case "specular": material.reflectivityTexture = texture; break;
-                case "gloss": material.microSurfaceTexture = texture; break;
+                // case "gloss": material.microSurfaceTexture = texture; break;
                 case "roughness":
-                    material.metallicTexture = texture;
-                    material.useRoughnessFromMetallicTextureGreen = true;
-                    material.metallic = 0;
-                    material.roughness = 1;
+                    material.microSurfaceTexture = texture;
+                    material.useAutoMicroSurfaceFromReflectivityMap = true;
+                    // material.useRoughnessFromMetallicTextureGreen = true;
+                    // material.metallic = 0;
+                    // material.roughness = 1;
                     break;
                 case "cavity":
                 case "ao":
@@ -291,11 +316,11 @@ export class QuixelListener {
                         material.opacityTexture.getAlphaFromRGB = true;
                     }
                     break;
-                case "transmission":
-                    material.subSurface.isTranslucencyEnabled = true;
-                    material.subSurface.thicknessTexture = texture;
-                    material.subSurface.translucencyIntensity = 1;
-                    break;
+                // case "transmission":
+                //     material.subSurface.isTranslucencyEnabled = true;
+                //     material.subSurface.thicknessTexture = texture;
+                //     material.subSurface.translucencyIntensity = 1;
+                //     break;
                 default: break;
             }
         });
