@@ -1,5 +1,5 @@
 import * as React from "react";
-import { PBRMaterial } from "babylonjs";
+import { PBRMaterial, Mesh } from "babylonjs";
 import { Editor, IPlugin, MaterialInspector } from "babylonjs-editor";
 
 import { Toolbar } from "./toolbar";
@@ -47,7 +47,7 @@ export const registerEditorPlugin = (editor: Editor): IPlugin => {
                 ctor: QuixelMeshInspector,
                 ctorNames: ["Mesh"],
                 title: "Quixel Mesh",
-                isSupported: (o) => o.metadata?.isFromQuixel,
+                isSupported: (o) => o instanceof Mesh && o.metadata?.isFromQuixel,
             },
         ],
 

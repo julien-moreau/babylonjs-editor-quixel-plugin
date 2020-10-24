@@ -4,6 +4,8 @@ import { GUI } from "dat.gui";
 
 export class QuixelPBRMaterialInspector extends MaterialInspector<PBRMaterial> {
     private _mapUVScale: number = 0;
+    private _mapUScale: number = 0;
+    private _mapVScale: number = 0;
 
     /**
      * Called on a controller finished changes.
@@ -35,11 +37,27 @@ export class QuixelPBRMaterialInspector extends MaterialInspector<PBRMaterial> {
 
         const uvs = this.tool!.addFolder("UV");
         uvs.open();
-        uvs.add(this, "_mapUVScale").min(0).step(0.1).name("UV Uniform Scale").onChange(() => {
+        uvs.add(this, "_mapUVScale").min(0).step(0.01).name("UV Uniform Scale").onChange(() => {
             textures.forEach((texture) => {
                 texture.uScale = this._mapUVScale;
                 texture.vScale = this._mapUVScale;
             });
+
+            this.refreshDisplay();
+        });
+
+        // U and V scales
+        const uv = uvs.addFolder("UV");
+        uv.open();
+
+        this._mapUScale = textures[0]?.uScale ?? 1;
+        this._mapVScale = textures[0]?.vScale ?? 1;
+
+        uv.add(this, "_mapUScale").min(0).step(0.01).name("U Scale").onChange(() => {
+            textures.forEach((texture) => texture.uScale = this._mapUScale);
+        });
+        uv.add(this, "_mapVScale").min(0).step(0.01).name("U Scale").onChange(() => {
+            textures.forEach((texture) => texture.vScale = this._mapVScale);
         });
     }
 }

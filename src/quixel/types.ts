@@ -28,6 +28,17 @@ export interface IQuixelLOD {
      * Defines the of the LOD object.
      */
     lodObjectName: string;
+    /**
+     * Defines the variation id of the lod.
+     */
+    variation?: number;
+}
+
+export interface IQuixelMesh {
+    /**
+     * Defines the name of the mesh files.
+     */
+    name: string;
 }
 
 export interface IQuixelExport {
@@ -43,6 +54,10 @@ export interface IQuixelExport {
      * Defines the type of asset.
      */
     type: "3d" | "surface" | "atlas" | "3dplant";
+    /**
+     * Defines the list of all meshes available.
+     */
+    meshList: IQuixelMesh[];
     /**
      * Defines the list of all available FBX files.
      */

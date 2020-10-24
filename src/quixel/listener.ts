@@ -5,15 +5,16 @@ import {
     Nullable,
     Geometry, Tools as BabylonTools, Vector3, Quaternion,
     VertexData, Mesh, PBRMaterial, Space, Texture,
-    NullEngine, Scene, SceneSerializer,
+    NullEngine, Scene, SceneSerializer, Material,
 } from "babylonjs";
-import { Editor, MeshesAssets, Project, FilesStore, MaterialAssets } from "babylonjs-editor";
+import { Editor, MeshesAssets, Project, FilesStore, MaterialAssets, Tools } from "babylonjs-editor";
 
 import { QuixelServer } from "./server";
 import { IQuixelExport, IQuixelLOD } from "./types";
 
 import { FBXLoader } from "../fbx/loader";
 import { preferences } from "./preferences";
+import { INumberDictionary } from "babylonjs-editor/shared/types";
 
 export class QuixelListener {
     private static _Instance: Nullable<QuixelListener> = null;
@@ -70,7 +71,7 @@ export class QuixelListener {
     /**
      * Handles the given quixel export json as a 3d asset.
      */
-    private async _handle3dExport(json: IQuixelExport): Promise<void> {
+    private async _handle3dExport(json: IQuixelExport, material?: Nullable<Material>): Promise<void> {
         const meshes: Mesh[] = [];
 
         const engine = preferences.automaticallyAddToScene ? null : new NullEngine();
@@ -110,7 +111,7 @@ export class QuixelListener {
                     });
                 }
 
-                mesh.material = await this._parseMaterial(json, scene);
+                mesh.material = material ?? await this._parseMaterial(json, scene);
             }
 
             meshes.push(mesh);
@@ -182,6 +183,8 @@ export class QuixelListener {
         }
 
         // Collisions
+        meshes.forEach((m) => m.checkCollisions = false);
+        
         if (preferences.checkCollisions) {
             if (preferences.checkColiisionsOnLowerLod) {
                 const lastMesh = meshes[meshes.length - 1];
@@ -222,8 +225,32 @@ export class QuixelListener {
      * Handles the given quixel export json as a 3d asset.
      */
     private async _handle3dPlantExport(json: IQuixelExport): Promise<void> {
-        // TODO: manage plants.
-        this._handle3dExport(json);
+        const clone = Tools.CloneObject(json);
+
+        // Create material
+        const material = await this._parseMaterial(json, this._editor.scene!);
+        
+        // Order by variation
+        const variations: INumberDictionary<IQuixelLOD[]> = { };
+        json.lodList.forEach((lod) => {
+            if (!lod.variation) { return; }
+
+            if (!variations[lod.variation]) {
+                variations[lod.variation] = [];
+            }
+
+            variations[lod.variation].push(lod);
+        });
+
+        for (const v in variations) {
+            await this._handle3dExport(
+                {
+                    ...clone,
+                    lodList: variations[v],
+                },
+                material,
+            );
+        }
     }
 
     /**
@@ -259,7 +286,10 @@ export class QuixelListener {
     private async _parseMaterial(json: IQuixelExport, scene: Scene): Promise<Nullable<PBRMaterial>> {
         this._editor.console.logInfo(`Parsing material named "${json.name}"`);
 
-        const material = new PBRMaterial(json.name, scene);
+        const existingMaterials = scene.materials.filter((m) => m.name === json.name).length;
+        const count = existingMaterials ? ` ${existingMaterials}` : "";
+
+        const material = new PBRMaterial(json.name + count, scene);
         material.id = BabylonTools.RandomId();
         material.ambientColor.copyFrom(preferences.ambientColor);
         material.metadata = {
@@ -298,29 +328,25 @@ export class QuixelListener {
                 case "albedo": material.albedoTexture = texture; break;
                 case "normal": material.bumpTexture = texture; break;
                 case "specular": material.reflectivityTexture = texture; break;
+
                 // case "gloss": material.microSurfaceTexture = texture; break;
+
                 case "roughness":
                     material.microSurfaceTexture = texture;
                     material.useAutoMicroSurfaceFromReflectivityMap = true;
-                    // material.useRoughnessFromMetallicTextureGreen = true;
-                    // material.metallic = 0;
-                    // material.roughness = 1;
                     break;
+                
                 case "cavity":
                 case "ao":
                     material.ambientTexture = texture;
                     break;
+
                 case "opacity":
                     material.opacityTexture = texture;
                     if (material.opacityTexture) {
                         material.opacityTexture.getAlphaFromRGB = true;
                     }
                     break;
-                // case "transmission":
-                //     material.subSurface.isTranslucencyEnabled = true;
-                //     material.subSurface.thicknessTexture = texture;
-                //     material.subSurface.translucencyIntensity = 1;
-                //     break;
                 default: break;
             }
         });
