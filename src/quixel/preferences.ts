@@ -28,7 +28,12 @@ export interface IQuixelPreferences {
     /**
      * Defines the distance used to separate LODs.
      */
-    lodDistance?: number;
+    lodDistance: number;
+
+    /**
+     * Defines wether or not only albedo texture should be used as higher quality.
+     */
+    useOnlyAlbedoAsHigherQuality: boolean;
 }
 
 export const preferences: IQuixelPreferences = {
@@ -37,10 +42,12 @@ export const preferences: IQuixelPreferences = {
 
     automaticallyAddToScene: true,
 
-    checkCollisions: true,
-    checkColiisionsOnLowerLod: true,
+    checkCollisions: false,
+    checkColiisionsOnLowerLod: false,
 
     lodDistance: 20,
+
+    useOnlyAlbedoAsHigherQuality: false,
 };
 
 /**
@@ -56,6 +63,7 @@ export const exportPreferences = () => ({
     checkColiisionsOnLowerLod: preferences.checkColiisionsOnLowerLod,
 
     lodDistance: preferences.lodDistance,
+    useOnlyAlbedoAsHigherQuality: preferences.useOnlyAlbedoAsHigherQuality,
 });
 
 /**
@@ -72,6 +80,8 @@ export const importPreferences = (config: any) => {
     preferences.checkColiisionsOnLowerLod = config.checkColiisionsOnLowerLod ?? true;
 
     preferences.lodDistance = config.lodDistance ?? 20;
+
+    preferences.useOnlyAlbedoAsHigherQuality = config.useOnlyAlbedoAsHigherQuality ?? false;
 };
 
 export class QuixelPreferences {

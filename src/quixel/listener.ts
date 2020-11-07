@@ -1,5 +1,5 @@
 import { basename, join, dirname } from "path";
-import { readFile, writeJSON, remove, copy } from "fs-extra";
+import { readFile, writeJSON, remove, copy, readJSON } from "fs-extra";
 
 import {
     Nullable,
@@ -7,14 +7,16 @@ import {
     VertexData, Mesh, PBRMaterial, Space, Texture,
     NullEngine, Scene, SceneSerializer, Material,
 } from "babylonjs";
-import { Editor, MeshesAssets, Project, FilesStore, MaterialAssets, Tools } from "babylonjs-editor";
+import { Editor, MeshesAssets, Project, FilesStore, MaterialAssets, Tools, TextureAssets } from "babylonjs-editor";
+import { INumberDictionary } from "babylonjs-editor/shared/types";
 
 import { QuixelServer } from "./server";
-import { IQuixelExport, IQuixelLOD } from "./types";
+import { IQuixelComponent, IQuixelExport, IQuixelLOD } from "./types";
 
 import { FBXLoader } from "../fbx/loader";
 import { preferences } from "./preferences";
-import { INumberDictionary } from "babylonjs-editor/shared/types";
+
+import { TextureMergeTools } from "../tools/mergeTexture";
 
 export class QuixelListener {
     private static _Instance: Nullable<QuixelListener> = null;
@@ -125,7 +127,7 @@ export class QuixelListener {
         meshes.forEach((m, index) => {
             if (index < 1) { return }
 
-            meshes[0].addLODLevel(preferences.lodDistance! * index, m);
+            meshes[0].addLODLevel(preferences.lodDistance * index, m);
             m.material = meshes[0].material;
         });
 
@@ -296,15 +298,55 @@ export class QuixelListener {
             isFromQuixel: true,
         };
 
+        const components: IQuixelComponent[] = [];
+
         // Copy textures
         if (preferences.automaticallyAddToScene) {
             this._editor.console.logInfo(`Adding material's textures to assets...`);
 
-            await this._editor.assets.addFilesToAssets(json.components.map((c) => ({
+            if (preferences.useOnlyAlbedoAsHigherQuality) {
+                const jsonConfigPath = join(json.path, `${json.id}.json`);
+                const jsonConfig = await readJSON(jsonConfigPath, { encoding: "utf-8" });
+
+                json.components.forEach((c) => {
+                    if (json.type === "surface") {
+                        const component = jsonConfig.maps.find((c2) => c2.type === c.type && c2.mimeType === "image/jpeg" && c2.resolution === "1024x1024");
+                        if (!component) { return components.push(c); }
+
+                        components.push({ name: component.uri, type: c.type, path: join(json.path, "Thumbs", "1k", component.uri) });
+                    } else if (json.type === "3dplant") {
+                        const component = jsonConfig.maps.find((c2) => c2.type === c.type && c2.mimeType === "image/jpeg" && c2.resolution === "1024x1024");
+                        if (!component) { return components.push(c); }
+
+                        const uri = basename(component.uri);
+                        components.push({ name: uri, type: c.type, path: join(json.path, "Thumbs", "1k", uri) });
+                    } else {
+                        const component = jsonConfig.components.find((c2) => c2.type === c.type);
+                        if (!component) { return components.push(c); }
+
+                        const uris = component.uris[0];
+
+                        const formats = uris.resolutions.find((u) => u.resolution === "1024x1024")?.formats;
+                        if (!formats) { return components.push(c); }
+
+                        const textureUri = formats.find((f) => f.mimeType === "image/jpeg")?.uri;
+                        if (!textureUri) { return components.push(c); }
+
+                        components.push({ name: textureUri, type: c.type, path: join(json.path, "Thumbs", "1k", textureUri) });
+                    }
+                });
+                components[0] = json.components.find((c) => c.type === "albedo") ?? components[0];
+            } else {
+                json.components.forEach((c) => components.push(c));
+            }
+
+            await this._editor.assets.addFilesToAssets(components.map((c) => ({
                 name: c.name,
                 path: c.path,
             })));
         } else {
+            json.components.forEach((c) => components.push(c));
+            
             for (const c of json.components) {
                 const texturePath = join(Project.DirPath!, "files", c.name);
                 await copy(c.path, texturePath);
@@ -313,7 +355,9 @@ export class QuixelListener {
         }
 
         // Apply textures
-        json.components.forEach((c) => {
+        let displacementTexture: Nullable<Texture> = null;
+
+        components.forEach((c) => {
             let texture: Nullable<Texture> = null;
 
             if (preferences.automaticallyAddToScene) {
@@ -328,8 +372,7 @@ export class QuixelListener {
                 case "albedo": material.albedoTexture = texture; break;
                 case "normal": material.bumpTexture = texture; break;
                 case "specular": material.reflectivityTexture = texture; break;
-
-                // case "gloss": material.microSurfaceTexture = texture; break;
+                case "displacement": displacementTexture = texture; break;
 
                 case "roughness":
                     material.microSurfaceTexture = texture;
@@ -350,6 +393,22 @@ export class QuixelListener {
                 default: break;
             }
         });
+
+        if (material.bumpTexture) {
+            if (displacementTexture) {
+                const textureName = await TextureMergeTools.MergeDisplacementWithNormal(this._editor, displacementTexture, material.bumpTexture);
+                const texture = textureName ? this._editor.assets.getComponent(TextureAssets)?.getLastTextureByName(textureName) : null;
+
+                if (texture) {
+                    material.bumpTexture = texture;
+                    material.useParallax = true;
+                    material.useParallaxOcclusion = true;
+                }
+            }
+
+            material.invertNormalMapX = true;
+            material.invertNormalMapY = true;
+        }
 
         return material;
     }

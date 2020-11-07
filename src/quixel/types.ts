@@ -51,6 +51,10 @@ export interface IQuixelExport {
      */
     path: string;
     /**
+     * Defines the id of the model.
+     */
+    id: string;
+    /**
      * Defines the type of asset.
      */
     type: "3d" | "surface" | "atlas" | "3dplant";

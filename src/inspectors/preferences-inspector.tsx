@@ -21,7 +21,8 @@ export class QuixelPluginPreferencesInspector extends AbstractInspector<QuixelPr
         const common = this.tool!.addFolder("Common");
         common.open();
 
-        common.add(preferences, "automaticallyAddToScene").name("Add in scene instead of assets.");
+        common.add(preferences, "automaticallyAddToScene").name("Add in scene instead of assets");
+        common.add(preferences, "useOnlyAlbedoAsHigherQuality").name("Use Only Albedo As Higher Quality");
     }
 
     /**
