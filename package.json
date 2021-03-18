@@ -15,7 +15,7 @@
         "@types/fs-extra": "8.1.0",
         "@types/http-server": "0.10.0",
         "@types/node": "13.9.0",
-        "typescript": "3.7.5"
+        "typescript": "4.0.5"
     },
     "dependencies": {
         "babylonjs-editor": "4.0.0-rc.1",

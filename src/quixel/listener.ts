@@ -1,426 +1,341 @@
-import { basename, join, dirname } from "path";
-import { readFile, writeJSON, remove, copy, readJSON } from "fs-extra";
+import { join } from "path";
+import { copyFile, readFile } from "fs-extra";
 
-import {
-    Nullable,
-    Geometry, Tools as BabylonTools, Vector3, Quaternion,
-    VertexData, Mesh, PBRMaterial, Space, Texture,
-    NullEngine, Scene, SceneSerializer, Material,
-} from "babylonjs";
-import { Editor, MeshesAssets, Project, FilesStore, MaterialAssets, Tools, TextureAssets } from "babylonjs-editor";
-import { INumberDictionary } from "babylonjs-editor/shared/types";
+import { Editor, Tools, Project, FilesStore, TextureAssets } from "babylonjs-editor";
+import { Nullable } from "babylonjs-editor/shared/types";
+
+import { Mesh, VertexData, Geometry, Vector3, Space, PBRMaterial, Texture } from "babylonjs";
 
 import { QuixelServer } from "./server";
-import { IQuixelComponent, IQuixelExport, IQuixelLOD } from "./types";
-
-import { FBXLoader } from "../fbx/loader";
+import { IQuixelExport, IQuixelLOD } from "./types";
 import { preferences } from "./preferences";
 
-import { TextureMergeTools } from "../tools/mergeTexture";
+import { FBXLoader } from "../fbx/loader";
+import { TextureMerger } from "../tools/textureMerger";
 
 export class QuixelListener {
     private static _Instance: Nullable<QuixelListener> = null;
 
     /**
-     * Inits the quixel listener.
-     * @param editor the editor reference.
+     * Inits the listener used to compute Quixel Bridge commands.
+     * @param editor defines the reference to the editor.
      */
-    public static Init(editor: Editor): void {
-        this._Instance = this._Instance ?? new QuixelListener(editor);
+    public static Init(editor: Editor): QuixelListener {
+        this._Instance ??= new QuixelListener(editor);
+        return this._Instance;
     }
 
-    private _computing: boolean = false;
+    private _editor: Editor;
     private _queue: IQuixelExport[] = [];
 
     /**
      * Constructor.
-     * @param _editor defines the editor reference.
+     * @param editor defines the reference to the editor.
      */
-    public constructor(private _editor: Editor) {
-        // Register to the event
-        QuixelServer.OnExportedAssetObservable.add(async (exports) => {
-            exports.forEach((e) => this._queue.push(e));
-            this._handleAll();
+    private constructor(editor: Editor) {
+        this._editor = editor;
+
+        QuixelServer.OnExportedAssetObservable.add((e) => {
+            this._handleAssetExported(e);
         });
     }
 
     /**
-     * Handles all exports in the current queue.
+     * Called on an assets has been exported from Quixel Bridge.
      */
-    private async _handleAll(): Promise<void> {
-        if (this._computing) { return; }
-        this._computing = true;
-
+    private async _handleAssetExported(exports: IQuixelExport[]): Promise<void> {
         while (this._queue.length) {
-            const json = this._queue.shift()!;
-
-            switch (json.type) {
-                case "3d": await this._handle3dExport(json); break;
-                case "3dplant": await this._handle3dPlantExport(json); break;
-                
-                case "surface":
-                case "atlas":
-                    await this._handleSurfaceExport(json);
-                    break;
-                
-                default: break;
-            }
+            await Tools.Wait(150);
         }
 
-        this._computing = false;
-    }
+        const task = this._editor.addTaskFeedback(0, "");
 
-    /**
-     * Handles the given quixel export json as a 3d asset.
-     */
-    private async _handle3dExport(json: IQuixelExport, material?: Nullable<Material>): Promise<void> {
-        const meshes: Mesh[] = [];
+        // Add all exports to the queue
+        exports.forEach((e) => this._queue.push(e));
 
-        const engine = preferences.automaticallyAddToScene ? null : new NullEngine();
-        const scene = preferences.automaticallyAddToScene ? this._editor.scene! : new Scene(engine!);
+        // Copy textures
+        this._editor.updateTaskFeedback(task, 0, "Quixel: Copying textures...");
+        this._editor.console.logSection("Quixel: Copy textures");
+        await Promise.all(this._queue.map((q) => this._copyTextures(q)));
+        this._editor.updateTaskFeedback(task, 20);
 
-        const task = this._editor.addTaskFeedback(0, `Processing "${json.name}"`);
-        const step = 100 / json.lodList.length;
-        let currentStep = 0;
+        // Handle exports
+        const step = 80 / this._queue.length;
+        let feedbackStep = 20;
 
-        // Fbx
-        for (const lod of json.lodList) {
-            this._editor.console.logInfo(`Parsing FBX mesh from Quixel Bridge at path: "${lod.path}"`);
-            const lodContent = await readFile(lod.path);
+        this._editor.console.logSection("Quixel: Handle export");
+        this._editor.updateTaskFeedback(task, feedbackStep, "Quixel: Handling exports...");
+        await Promise.all(this._queue.map((q) => this._handleExport(q).then(() => {
+            this._editor.updateTaskFeedback(task, feedbackStep += step);
+        })));
 
-            // Check if the FBX file is 
-            if (!FBXLoader.IsValidFBX(lodContent)) {
-                this._editor.console.logWarning(`Can't parse FBX file "${lod.path}" as it is not valid.`);
-                continue;
-            }
-            
-            const mesh = this._parseMesh(lod, lodContent, scene);
-            if (!mesh) { return; }
-
-            // Create material
-            if (!meshes.length) {
-                mesh.name = json.name;
-                mesh.scaling.scale(preferences.objectScale);
-                mesh.metadata = {
-                    isFromQuixel: true,
-                    lodDistance: preferences.lodDistance,
-                };
-
-                // Add to shadows?
-                if (preferences.automaticallyAddToScene) {
-                    this._editor.scene!.lights.forEach((l) => {
-                        l.getShadowGenerator()?.getShadowMap()?.renderList?.push(mesh);
-                    });
-                }
-
-                mesh.material = material ?? await this._parseMaterial(json, scene);
-            }
-
-            meshes.push(mesh);
-
-            // Task feedback.
-            currentStep += step;
-            this._editor.updateTaskFeedback(task, currentStep);
-        }
-
-        // LODs
-        meshes.forEach((m, index) => {
-            if (index < 1) { return }
-
-            meshes[0].addLODLevel(preferences.lodDistance * index, m);
-            m.material = meshes[0].material;
-        });
-
-        // Add to assets?
-        if (!preferences.automaticallyAddToScene) {
-            this._editor.updateTaskFeedback(task, 0, `Adding "${json.name}" to assets...`)
-            meshes[0].material?.getActiveTextures().forEach((texture) => {
-                texture.name = basename(texture.name);
-                if (texture["url"]) { texture["url"] = texture.name; }
-            });
-
-            const sceneJson = SceneSerializer.Serialize(scene);
-            sceneJson.meshes.forEach((m) => {
-                if (!m) { return; }
-
-                const mesh = scene.getMeshByID(m.id);
-                if (!mesh || !(mesh instanceof Mesh)) { return; }
-
-                const lods = mesh.getLODLevels();
-                if (!lods.length) { return; }
-
-                m.lodMeshIds = lods.map((lod) => lod.mesh?.id);
-                m.lodDistances = lods.map((lod) => lod.distance);
-                m.lodCoverages = lods.map((lod) => lod.distance);
-            });
-
-            const tempSceneName = `${json.lodList[0].lodObjectName}.babylon`;
-            const tempScenePath = join(dirname(json.path), tempSceneName);
-
-            try {
-                this._editor.updateTaskFeedback(task, 50);
-
-                await writeJSON(tempScenePath, sceneJson);
-
-                this._editor.assets.selectTab(MeshesAssets);
-
-                await this._editor.assets.addFilesToAssets([{
-                    name: tempSceneName,
-                    path: tempScenePath,
-                }]);
-
-                this._editor.updateTaskFeedback(task, 75);
-            } catch (e) {
-                // Catch silently.
-            }
-
-            try {
-                await remove(tempScenePath);
-            } catch (e) {
-                // Catch silently
-            }
-
-            scene.dispose();
-            engine!.dispose();
-        }
-
-        // Collisions
-        meshes.forEach((m) => m.checkCollisions = false);
-        
-        if (preferences.checkCollisions) {
-            if (preferences.checkColiisionsOnLowerLod) {
-                const lastMesh = meshes[meshes.length - 1];
-                lastMesh.metadata = lastMesh.metadata ?? { };
-                lastMesh.metadata.keepGeometryInline = true;
-
-                const collisionInstance = lastMesh?.createInstance("collisionsInstance");
-                collisionInstance.checkCollisions = true;
-                collisionInstance.parent = meshes[0];
-                collisionInstance.isVisible = false;
-                collisionInstance.id = BabylonTools.RandomId();
-                collisionInstance.rotationQuaternion = Quaternion.Identity();
-            } else {
-                meshes[0].checkCollisions = true;
-            }
-        }
-
-        // Feedback
+        // Notify done
         this._editor.updateTaskFeedback(task, 100, "Done!");
         this._editor.closeTaskFeedback(task, 1000);
 
-        // Refresh
-        this._editor.graph.refresh();
-        return this._editor.assets.refresh(MaterialAssets, meshes[0].material);
+        // Refresh assets
+        await this._editor.assets.refresh();
+
+        // Empty queue
+        this._queue.splice(0, this._queue.length);
     }
 
     /**
-     * Handles the given quixel export json as a surface asset.
+     * Copies all the textures of the given quixel export.
      */
-    private async _handleSurfaceExport(json: IQuixelExport): Promise<void> {
-        const material = await this._parseMaterial(json, this._editor.scene!);
-        if (material) {
-            return this._editor.assets.refresh(MaterialAssets, material);
+    private async _copyTextures(json: IQuixelExport): Promise<void> {
+        if (!Project.DirPath) {
+            return;
         }
-    }
 
-    /**
-     * Handles the given quixel export json as a 3d asset.
-     */
-    private async _handle3dPlantExport(json: IQuixelExport): Promise<void> {
-        const clone = Tools.CloneObject(json);
-
-        // Create material
-        const material = await this._parseMaterial(json, this._editor.scene!);
-        
-        // Order by variation
-        const variations: INumberDictionary<IQuixelLOD[]> = { };
-        json.lodList.forEach((lod) => {
-            if (!lod.variation) { return; }
-
-            if (!variations[lod.variation]) {
-                variations[lod.variation] = [];
-            }
-
-            variations[lod.variation].push(lod);
+        const promises = json.components.map(async (c) => {
+            const path = join(Project.DirPath!, "files", c.name);
+            await copyFile(c.path, path);
+            
+            this._editor.console.logInfo(`Copied texture "${c.name}" at ${path}`);
+            FilesStore.AddFile(path);
         });
 
-        for (const v in variations) {
-            await this._handle3dExport(
-                {
-                    ...clone,
-                    lodList: variations[v],
-                },
-                material,
-            );
+        await Promise.all(promises);
+    }
+
+    /**
+     * Called to handle the given json export according to its type.
+     */
+    private async _handleExport(json: IQuixelExport): Promise<void> {
+        // A material exists in any cases
+        const material = await this._createMaterial(json);
+
+        switch (json.type) {
+            case "3d":
+                await this._handle3dExport(json, material);
+                break;
+
+            case "3dplant":
+                await this._hande3dPlantExport(json, material);
+                break;
         }
     }
 
     /**
-     * Parses the mesh using the given content.
+     * Handles exports of type "3d" (3d assets).
      */
-    private _parseMesh(lod: IQuixelLOD, lodContent: Buffer, scene: Scene): Nullable<Mesh> {
-        const loader = new FBXLoader(lodContent);
-        const geometryData = loader.parse();
-        if (!geometryData) { return null; }
-
-        const mesh = new Mesh(lod.lodObjectName, scene);
-        mesh.id = BabylonTools.RandomId();
-        mesh.scaling.set(preferences.objectScale, preferences.objectScale, preferences.objectScale);
-        mesh.receiveShadows = true;
-        mesh.rotate(new Vector3(1, 0, 0), -Math.PI * 0.5, Space.LOCAL);
-        mesh.isPickable = false;
-
-        const vertexData = new VertexData();
-        vertexData.positions = geometryData.positions;
-        vertexData.indices = geometryData.indices ?? null;
-        vertexData.normals = geometryData.normals ?? [];
-        vertexData.uvs = geometryData.uvs ?? [];
-
-        const geometry = new Geometry(BabylonTools.RandomId(), scene, vertexData, false);
-        geometry.applyToMesh(mesh);
-
-        return mesh;
+    private async _handle3dExport(json: IQuixelExport, material: PBRMaterial): Promise<void> {
+        const meshes = await this._createMeshes(json.name, json.lodList);
+        meshes.forEach((m) => m.material = material);
     }
 
     /**
-     * Parses the material using the given description.
+     * Handles exports of type "3dplant" (3d plants).
      */
-    private async _parseMaterial(json: IQuixelExport, scene: Scene): Promise<Nullable<PBRMaterial>> {
-        this._editor.console.logInfo(`Parsing material named "${json.name}"`);
+    private async _hande3dPlantExport(json: IQuixelExport, material: PBRMaterial): Promise<void> {
+        const variations: IQuixelLOD[][] = [];
+        json.lodList.forEach((lod) => {
+            if (lod.variation === undefined) {
+                return;
+            }
 
-        const existingMaterials = scene.materials.filter((m) => m.name === json.name).length;
-        const count = existingMaterials ? ` ${existingMaterials}` : "";
+            const index = lod.variation - 1;
+            if (!variations[index]) {
+                variations.push([]);
+            }
 
-        const material = new PBRMaterial(json.name + count, scene);
-        material.id = BabylonTools.RandomId();
-        material.ambientColor.copyFrom(preferences.ambientColor);
-        material.metadata = {
-            isFromQuixel: true,
-        };
+            variations[index].push(lod);
+        });
 
-        const components: IQuixelComponent[] = [];
+        const variationsMeshes = await Promise.all(variations.map((v, index) => this._createMeshes(`${json.name}-var${index + 1}`, v)));
+        variationsMeshes.forEach((variationMeshes) => {
+            variationMeshes.forEach((m) => m.material = material);
+        });
+    }
 
-        // Copy textures
-        if (preferences.automaticallyAddToScene) {
-            this._editor.console.logInfo(`Adding material's textures to assets...`);
+    /**
+     * Creates all the meshes including their LODs.
+     */
+    private async _createMeshes(name: string, lodList: IQuixelLOD[]): Promise<Mesh[]> {
+        const parsedMeshes: { index: number; mesh: Mesh }[] = [];
+        const promises = lodList.map(async (lod, index) => {
+            const content = await readFile(lod.path);
+            if (!FBXLoader.IsValidFBX(content)) {
+                return this._editor.console.logWarning(`Can't parse FBX file "${lod.lodObjectName}": not valid file.`);;
+            }
 
-            if (preferences.useOnlyAlbedoAsHigherQuality) {
-                const jsonConfigPath = join(json.path, `${json.id}.json`);
-                const jsonConfig = await readJSON(jsonConfigPath, { encoding: "utf-8" });
+            const loader = new FBXLoader(content);
+            const geometryData = loader.parse();
 
-                json.components.forEach((c) => {
-                    if (json.type === "surface") {
-                        const component = jsonConfig.maps.find((c2) => c2.type === c.type && c2.mimeType === "image/jpeg" && c2.resolution === "1024x1024");
-                        if (!component) { return components.push(c); }
+            if (!geometryData) {
+                return this._editor.console.logWarning(`Mesh "${lod.lodObjectName}" has no geometry. Skipping.`);
+            }
 
-                        components.push({ name: component.uri, type: c.type, path: join(json.path, "Thumbs", "1k", component.uri) });
-                    } else if (json.type === "3dplant") {
-                        const component = jsonConfig.maps.find((c2) => c2.type === c.type && c2.mimeType === "image/jpeg" && c2.resolution === "1024x1024");
-                        if (!component) { return components.push(c); }
+            const mesh = new Mesh(lod.lodObjectName, this._editor.scene!);
+            mesh.scaling.setAll(preferences.objectScale);
+            mesh.rotate(new Vector3(1, 0, 0), -Math.PI * 0.5, Space.LOCAL);
+            mesh.id = Tools.RandomId();
+            mesh.receiveShadows = true;
+            mesh.isPickable = false;
+            mesh.metadata = {
+                isFromQuixel: true,
+                lodDistance: preferences.lodDistance,
+            };
 
-                        const uri = basename(component.uri);
-                        components.push({ name: uri, type: c.type, path: join(json.path, "Thumbs", "1k", uri) });
-                    } else {
-                        const component = jsonConfig.components.find((c2) => c2.type === c.type);
-                        if (!component) { return components.push(c); }
+            const vertexData = new VertexData();
+            vertexData.positions = geometryData.positions;
+            vertexData.indices = geometryData.indices ?? null;
+            vertexData.normals = geometryData.normals ?? [];
+            vertexData.uvs = geometryData.uvs ?? [];
 
-                        const uris = component.uris[0];
+            const geometry = new Geometry(Tools.RandomId(), this._editor.scene!, vertexData, false);
+            geometry.applyToMesh(mesh);
 
-                        const formats = uris.resolutions.find((u) => u.resolution === "1024x1024")?.formats;
-                        if (!formats) { return components.push(c); }
+            parsedMeshes.push({ index, mesh });
 
-                        const textureUri = formats.find((f) => f.mimeType === "image/jpeg")?.uri;
-                        if (!textureUri) { return components.push(c); }
+            this._editor.console.logInfo(`Created mesh "${lod.lodObjectName}"`);
+        });
 
-                        components.push({ name: textureUri, type: c.type, path: join(json.path, "Thumbs", "1k", textureUri) });
-                    }
+        await Promise.all(promises);
+
+        // Sort meshes.
+        parsedMeshes.sort((a, b) => a.index - b.index);
+        parsedMeshes.forEach((m, index) => {
+            if (index === 0) {
+                m.mesh.name = name;
+                m.mesh.scaling.scale(preferences.objectScale);
+                return this._editor.scene!.lights.forEach((l) => {
+                    l.getShadowGenerator()?.getShadowMap()?.renderList?.push(m.mesh);
                 });
-                components[0] = json.components.find((c) => c.type === "albedo") ?? components[0];
-            } else {
-                json.components.forEach((c) => components.push(c));
             }
 
-            await this._editor.assets.addFilesToAssets(components.map((c) => ({
-                name: c.name,
-                path: c.path,
-            })));
-        } else {
-            json.components.forEach((c) => components.push(c));
-            
-            for (const c of json.components) {
-                const texturePath = join(Project.DirPath!, "files", c.name);
-                await copy(c.path, texturePath);
-                FilesStore.List[texturePath] = { path: texturePath, name: c.name };
-            }
+            parsedMeshes[0].mesh.addLODLevel(preferences.lodDistance * index, m.mesh);
+        });
+
+        // Refresh graph
+        this._editor.graph.refresh();
+
+        return parsedMeshes.map((m) => m.mesh);
+    }
+
+    /**
+     * Creates the material acording to the given json configuration.
+     */
+    private async _createMaterial(json: IQuixelExport): Promise<PBRMaterial> {
+        const material = new PBRMaterial(json.name, this._editor.scene!);
+        material.invertNormalMapX = true;
+        material.invertNormalMapY = true;
+
+        if (!Project.DirPath) {
+            return material;
         }
 
-        // Apply textures
-        let displacementTexture: Nullable<Texture> = null;
+        const supportedComponents = [
+            "albedo", "normal", "specular",
+            "gloss", "ao", "metalness",
+            "opacity", "roughness",
+            "translucency",
+        ];
 
-        components.forEach((c) => {
-            let texture: Nullable<Texture> = null;
+        const texturesAssets = this._editor.assets.getComponent(TextureAssets);
+        if (!texturesAssets) {
+            return material;
+        }
 
-            if (preferences.automaticallyAddToScene) {
-                texture = this._getTexture(c.name);
-            } else {
-                texture = new Texture(c.path, scene);
+        let metallicTexture: Nullable<Texture> = null;
+        let roughnessTexture: Nullable<Texture> = null;
+
+        const components = json.components.filter((c) => supportedComponents.indexOf(c.type) !== -1);
+        const promises = components.map(async (c) => {
+            const path = join("files", c.name);
+            let texture: Texture;
+
+            try {
+                texture = await new Promise<Texture>((resolve, reject) => {
+                    const texture = new Texture(join(Project.DirPath!, path), this._editor.scene!, false, true, undefined, () => {
+                        texturesAssets.configureTexturePath(texture);
+                        resolve(texture);
+                    }, (_, e) => {
+                        reject(e);
+                    });
+                });
+            } catch (e) {
+                return;
             }
-
-            if (!texture) { return; }
 
             switch (c.type) {
                 case "albedo": material.albedoTexture = texture; break;
                 case "normal": material.bumpTexture = texture; break;
                 case "specular": material.reflectivityTexture = texture; break;
-                case "displacement": displacementTexture = texture; break;
                 case "gloss": material.microSurfaceTexture = texture; break;
-                case "ao": material.ambientTexture = texture; break;
 
-                case "metalness":
-                    material.metallicTexture = texture;
-                    material.metallic = 1;
-                    break;
-
-                case "roughness":
-                    material.sheen.isEnabled = true;
-                    material.sheen.textureRoughness = texture;
-                    break;
-                
+                case "metalness": metallicTexture = texture; break;
+                case "roughness": roughnessTexture = texture; break;
 
                 case "opacity":
                     material.opacityTexture = texture;
-                    if (material.opacityTexture) {
-                        material.opacityTexture.getAlphaFromRGB = true;
-                    }
+                    texture.getAlphaFromRGB = true;
                     break;
-                default: break;
+
+                case "translucency":
+                    material.subSurface.isTranslucencyEnabled = true;
+                    material.subSurface.thicknessTexture = texture;
+                    break;
             }
         });
 
-        if (material.bumpTexture) {
-            if (displacementTexture) {
-                const textureName = await TextureMergeTools.MergeDisplacementWithNormal(this._editor, displacementTexture, material.bumpTexture);
-                const texture = textureName ? this._editor.assets.getComponent(TextureAssets)?.getLastTextureByName(textureName) : null;
+        await Promise.all(promises);
 
-                if (texture) {
-                    material.bumpTexture = texture;
-                    material.useParallax = true;
-                    material.useParallaxOcclusion = true;
-                }
+        // Configure metallic roughness workflow.
+        if (metallicTexture && roughnessTexture) {
+            const packedMetallicTexturePath = await TextureMerger.MergeTextures(metallicTexture, roughnessTexture, (color1, color2) => ({
+                r: 0,
+                g: color2.r,
+                b: color1.r,
+                a: 255,
+            }));
+
+            if (packedMetallicTexturePath) {
+                metallicTexture!.dispose();
+                roughnessTexture!.dispose();
+
+                const packedMetallicTexture = await new Promise<Texture>((resolve, reject) => {
+                    const texture = new Texture(packedMetallicTexturePath, this._editor.scene!, false, true, undefined, () => {
+                        texturesAssets.configureTexturePath(texture);
+                        resolve(texture);
+                    }, (_, e) => {
+                        reject(e);
+                    });
+                });
+
+                FilesStore.AddFile(packedMetallicTexturePath);
+                
+                material.metallicTexture = packedMetallicTexture;
+                material.metallic = 1;
+                material.roughness = 1;
+                material.useRoughnessFromMetallicTextureAlpha = false;
+                material.useRoughnessFromMetallicTextureGreen = true;
+                material.useMetallnessFromMetallicTextureBlue = true;
             }
-
-            material.invertNormalMapX = true;
-            material.invertNormalMapY = true;
+        } else if (metallicTexture) {
+            material.metallicTexture = metallicTexture;
+            material.metallic = 1;
+            material.roughness = 0;
+            material.useRoughnessFromMetallicTextureAlpha = false;
+            material.useRoughnessFromMetallicTextureGreen = false;
+            material.useMetallnessFromMetallicTextureBlue = true;
+        } else if (roughnessTexture) {
+            material.metallicTexture = roughnessTexture;
+            material.metallic = 0;
+            material.roughness = 1;
+            material.useRoughnessFromMetallicTextureAlpha = false;
+            material.useRoughnessFromMetallicTextureGreen = true;
+            material.useMetallnessFromMetallicTextureBlue = false;
         }
 
+        // Add metadata
+        if (json.type === "surface") {
+            material.metadata = {
+                isFromQuixel: true,
+            };
+        }
+        
         return material;
-    }
-
-    /**
-     * Gets the texture identified by the given name.
-     */
-    private _getTexture(name: string): Nullable<Texture> {
-        const texture = this._editor.scene!.textures.find((t) => basename(t.name) === name);
-        return texture instanceof Texture ? texture : null;
     }
 }

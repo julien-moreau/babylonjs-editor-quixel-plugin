@@ -48,7 +48,7 @@ export class QuixelPBRMaterialInspector extends MaterialInspector<PBRMaterial, I
                         textures.forEach((t) => { t.uScale = v; t.vScale = v; });
                     }} onFinishChange={(v) => {
                         this.setState({ mapUScale: v, mapVScale: v }, () => {
-                            InspectorNotifier.NotifyChange(this.state, this);
+                            InspectorNotifier.NotifyChange(this.state, { caller: this });
                         });
                     }} />
 
