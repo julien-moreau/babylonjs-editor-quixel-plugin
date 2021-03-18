@@ -2,6 +2,7 @@ import { Server } from "net";
 
 import { Observable } from "babylonjs";
 import { Nullable } from "babylonjs-editor/shared/types";
+
 import { IQuixelExport } from "./types";
 
 export class QuixelServer {
@@ -18,6 +19,8 @@ export class QuixelServer {
      * Notifies the observers that an asset has been exported in Bridge from Quixel.
      */
     public static OnExportedAssetObservable: Observable<IQuixelExport[]> = new Observable<IQuixelExport[]>();
+
+    private static _Buffer: Nullable<Buffer> = null;
     
     /**
      * Connects to the server.
@@ -27,8 +30,26 @@ export class QuixelServer {
         
         this.Server = new Server((s) => {
             s.on("data", (d: Buffer) => {
-                const json = JSON.parse(d.toString("utf-8"));
-                this.OnExportedAssetObservable.notifyObservers(json);
+                if (!this._Buffer) {
+                    this._Buffer = Buffer.from(d);
+                } else {
+                    this._Buffer = Buffer.concat([this._Buffer, d]);
+                }
+            });
+
+            s.on("end", () => {
+                if (!this._Buffer) {
+                    return;
+                }
+
+                try {
+                    const json = JSON.parse(this._Buffer.toString("utf-8"));
+                    this.OnExportedAssetObservable.notifyObservers(json);
+                } catch (e) {
+                    // Catch silently.
+                }
+
+                this._Buffer = null;
             });
         });
         this.Server.listen(this.Port);

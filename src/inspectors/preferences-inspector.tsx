@@ -1,60 +1,49 @@
-import { AbstractInspector } from "babylonjs-editor";
+import * as React from "react";
+
+import {
+    AbstractInspector, InspectorSection, InspectorNumber, InspectorBoolean,
+    InspectorColor, InspectorColorPicker,
+} from "babylonjs-editor";
 
 import { QuixelPreferences, preferences } from "../quixel/preferences";
 
-export class QuixelPluginPreferencesInspector extends AbstractInspector<QuixelPreferences> {
+export class QuixelPluginPreferencesInspector extends AbstractInspector<QuixelPreferences, {}> {
     /**
-     * Called on the component did moubnt.
-     * @override
+     * Renders the content of the inspector.
      */
-    public onUpdate(): void {
-        this._addCommon();
-        this._addMesh();
-        this._addCollisions();
-        this._addLod();
-    }
+    public renderContent(): React.ReactNode {
+        return (
+            <>
+                <InspectorSection title="Common">
+                    <InspectorBoolean object={preferences} property="automaticallyAddToScene" label="Add in scene instead of assets" />
+                </InspectorSection>
 
-    /**
-     * Adds all the common editable properties.
-     */
-    private _addCommon(): void {
-        const common = this.tool!.addFolder("Common");
-        common.open();
+                <InspectorSection title="Maps">
+                    <InspectorBoolean object={preferences} property="useOnlyAlbedoAsHigherQuality" label="Use Only Albedo As Higher Quality" />
+                    <InspectorBoolean object={preferences} property="convertDisplacementToParallax" label="Convert Displacement To Parallax" />
+                    <InspectorBoolean object={preferences} property="mergeOpacityAlphaToAlbedo" label="Merge Opacity In Albedo Alpha" />
+                </InspectorSection>
 
-        common.add(preferences, "automaticallyAddToScene").name("Add in scene instead of assets");
-        common.add(preferences, "useOnlyAlbedoAsHigherQuality").name("Use Only Albedo As Higher Quality");
-    }
+                <InspectorSection title="Mesh">
+                    <InspectorNumber object={preferences} property="objectScale" label="Object Scale" step={0.01} />
+                    <InspectorColor object={preferences} property="ambientColor" label="Ambient Color" step={0.01} />
+                    <InspectorColorPicker object={preferences} property="ambientColor" label="Hex Color" />
+                </InspectorSection>
 
-    /**
-     * Adds all the meshes editable properties.
-     */
-    private _addMesh(): void {
-        const mesh = this.tool!.addFolder("Mesh");
-        mesh.open();
-        mesh.add(preferences, "objectScale").min(0).step(0.001).name("Object Scale");
+                <InspectorSection title="Collisions">
+                    <InspectorBoolean object={preferences} property="checkCollisions" label="Check Collisions" />
+                    <InspectorBoolean object={preferences} property="checkColiisionsOnLowerLod" label="Check Collisions On Lower LOD" />
+                </InspectorSection>
 
-        const material = this.tool!.addFolder("Material");
-        material.open();
-        this.addColor(material, "Ambient Color", preferences, "ambientColor");
-    }
+                <InspectorSection title="LOD">
+                    <InspectorNumber object={preferences} property="lodDistance" label="LOD Distance" min={5} step={0.01} />
+                </InspectorSection>
 
-    /**
-     * Adds all the collisions editable properties.
-     */
-    private _addCollisions(): void {
-        const collisions = this.tool!.addFolder("Collisions");
-        collisions.open();
-
-        collisions.add(preferences, "checkCollisions").name("Check Collisions");
-        collisions.add(preferences, "checkColiisionsOnLowerLod").name("Check Collisions On Lower LOD");
-    }
-
-    /**
-     * Adds all the LOD editable properties
-     */
-    private _addLod(): void {
-        const lods = this.tool!.addFolder("Level Of Detils");
-        lods.open();
-        lods.add(preferences, "lodDistance").min(5).step(0.01).name("LOD Distance");
+                <InspectorSection title="3D Plants">
+                    <InspectorBoolean object={preferences} property="merge3dPlants" label="Merge 3D Plants" />
+                    <InspectorBoolean object={preferences} property="use3dPlantsNodeMaterial" label="Use Dedicated Node Material" />
+                </InspectorSection>
+            </>
+        );
     }
 }

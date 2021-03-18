@@ -11,6 +11,11 @@ export interface IQuixelComponent {
      * Defines the absolute path of the component's file.
      */
     path: string;
+
+    /**
+     * Defines the list of all texture sets for the component.
+     */
+    textureSets?: string[];
 }
 
 export interface IQuixelLOD {
@@ -34,11 +39,26 @@ export interface IQuixelLOD {
     variation?: number;
 }
 
-export interface IQuixelMesh {
+export interface IQuixelMaterial {
+    opacityType: string;
+    materialName: string;
+    materialId: number;
+    textureSets: string[];
+}
+
+export interface IQuixelMeta {
     /**
-     * Defines the name of the mesh files.
+     * Defines the key of the meta data.
+     */
+    key: string;
+    /**
+     * Defines the displayable name of the metadata.
      */
     name: string;
+    /**
+     * Defines the value of the metadata.
+     */
+    value: string;
 }
 
 export interface IQuixelExport {
@@ -61,7 +81,7 @@ export interface IQuixelExport {
     /**
      * Defines the list of all meshes available.
      */
-    meshList: IQuixelMesh[];
+    meshList: IQuixelLOD[];
     /**
      * Defines the list of all available FBX files.
      */
@@ -70,4 +90,23 @@ export interface IQuixelExport {
      * Defines the list of all components of the asset (textures, etc.).
      */
     components: IQuixelComponent[];
+    /**
+     * Defines the list of all materials available for the mesh.
+     * If materials.length equals 0, only single material.
+     */
+    materials: IQuixelMaterial[];
+
+    /**
+     * Defines the categories of the export.
+     */
+    categories: string[];
+
+    /**
+     * Defines the path to the preview image.
+     */
+    previewImage: string;
+    /**
+     * Defines the list of all meta data available for the asset.
+     */
+    meta: IQuixelMeta[];
 }

@@ -8,6 +8,7 @@
       "outDir": "./build/src",
       "declarationDir": "./declaration/src",
       "jsx": "react",
+      "resolveJsonModule": true,
       "strictNullChecks": true,
       "noUnusedLocals": true,
       "noUnusedParameters": true,

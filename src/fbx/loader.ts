@@ -39,7 +39,7 @@ export class FBXLoader {
     /**
      * Parses the FBX file.
      */
-    public parse(): Nullable<IFBXGeometry> {
+    public parse(): Nullable<IFBXGeometry[]> {
         const nodes: IStringDictionary<IFBXNode> = {};
         while (!this._isEndOfContent()) {
             const node = this._parseNode();
@@ -52,7 +52,13 @@ export class FBXLoader {
         const geometry = nodes["Objects"]["Geometry"]
         if (!geometry) { return null; }
 
-        return new FBXGeometry().parse(geometry);
+        const connections = nodes["Connections"].connections;
+        if (!connections) { return null; }
+
+        return new FBXGeometry().parse({
+            geometry,
+            connections,
+        });
     }
 
     /**
@@ -200,6 +206,8 @@ export class FBXLoader {
             case "I": return this._stream.readUint32();
             // String
             case "S": return this._stream.readString(this._stream.readUint32());
+            // Int16
+            case "Y": return this._stream.readInt16();
             // Int64
             case "L": return this._stream.readInt64();
             // Float 32

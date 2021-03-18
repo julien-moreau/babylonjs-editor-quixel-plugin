@@ -1,6 +1,9 @@
+import { join } from "path";
+
 import * as React from "react";
+
 import { PBRMaterial, Mesh } from "babylonjs";
-import { Editor, IPlugin, MaterialInspector } from "babylonjs-editor";
+import { Editor, IPlugin, MaterialInspector, IPluginConfiguration, Icon } from "babylonjs-editor";
 
 import { Toolbar } from "./toolbar";
 
@@ -8,15 +11,15 @@ import { QuixelMeshInspector } from "./inspectors/lod-inspector";
 import { QuixelPBRMaterialInspector } from "./inspectors/pbr-inspector";
 import { QuixelPluginPreferencesInspector } from "./inspectors/preferences-inspector";
 
-import { QuixelListener } from "./quixel/listener";
 import { QuixelServer } from "./quixel/server";
+import { QuixelListener } from "./quixel/listener";
 import { exportPreferences, importPreferences } from "./quixel/preferences";
 
 /**
  * Registers the plugin by returning the IPlugin content.
  * @param editor defines the main reference to the editor.
  */
-export const registerEditorPlugin = (editor: Editor): IPlugin => {
+export const registerEditorPlugin = (editor: Editor, configuration: IPluginConfiguration): IPlugin => {
     QuixelServer.Connect();
     QuixelListener.Init(editor);
 
@@ -25,7 +28,7 @@ export const registerEditorPlugin = (editor: Editor): IPlugin => {
          * Defines the list of all toolbar elements to add when the plugin has been loaded.
          */
         toolbar: [
-            { buttonLabel: "Quixel", buttonIcon: "pin", content: <Toolbar editor={editor} /> }
+            { buttonLabel: "Quixel", buttonIcon: <Icon src={join(configuration.pluginAbsolutePath, "css/icon.png")} style={{ filter: "none" }} />, content: <Toolbar editor={editor} /> }
         ],
 
         /**
@@ -36,7 +39,7 @@ export const registerEditorPlugin = (editor: Editor): IPlugin => {
                 ctor: QuixelPBRMaterialInspector,
                 ctorNames: ["PBRMaterial"],
                 title: "Quixel PBR",
-                isSupported: (o) => MaterialInspector.IsObjectSupported(o, PBRMaterial) && o.metadata?.isFromQuixel === true,
+                isSupported: (o) => MaterialInspector.IsObjectSupported(o, PBRMaterial) && MaterialInspector.GetMaterialOfObject(o)?.metadata?.isFromQuixel === true,
             },
             {
                 ctor: QuixelPluginPreferencesInspector,
@@ -59,7 +62,10 @@ export const registerEditorPlugin = (editor: Editor): IPlugin => {
          * saves the project.
          */
         getWorkspacePreferences: () => {
-            return exportPreferences();
+            return {
+                ...exportPreferences(),
+                availableAssets: QuixelListener.ImportedAssets.map((a) => JSON.stringify(a)),
+            };
         },
 
         /**
@@ -69,6 +75,7 @@ export const registerEditorPlugin = (editor: Editor): IPlugin => {
          */
         setWorkspacePreferences: (preferences: any) => {
             importPreferences(preferences);
+            QuixelListener.ImportedAssets = preferences.availableAssets?.map((a) => JSON.parse(a)) ?? QuixelListener.ImportedAssets;
         },
     };
 }

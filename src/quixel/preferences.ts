@@ -34,20 +34,43 @@ export interface IQuixelPreferences {
      * Defines wether or not only albedo texture should be used as higher quality.
      */
     useOnlyAlbedoAsHigherQuality: boolean;
+    /**
+     * Defines wether or not displacement texture should be used as parallax.
+     */
+    convertDisplacementToParallax: boolean;
+
+    /**
+     * Defines wether or not opacity should be merge to albedo's alpha channel.
+     */
+    mergeOpacityAlphaToAlbedo: boolean;
+
+    /**
+     * Defines wether or not 3d plants should be merged together.
+     */
+    merge3dPlants: boolean;
+    /**
+     * Defines wether or not the node material (used to simulate wind etc. should be used).
+     */
+    use3dPlantsNodeMaterial: boolean;
 }
 
 export const preferences: IQuixelPreferences = {
     objectScale: 1,
     ambientColor: Color3.Black(),
-
-    automaticallyAddToScene: true,
+    
+    lodDistance: 20,
 
     checkCollisions: false,
     checkColiisionsOnLowerLod: false,
-
-    lodDistance: 20,
-
+    
+    automaticallyAddToScene: true,
     useOnlyAlbedoAsHigherQuality: false,
+    convertDisplacementToParallax: false,
+
+    mergeOpacityAlphaToAlbedo: true,
+
+    merge3dPlants: true,
+    use3dPlantsNodeMaterial: false,
 };
 
 /**
@@ -57,13 +80,19 @@ export const exportPreferences = () => ({
     objectScale: preferences.objectScale,
     ambientColor: preferences.ambientColor.asArray(),
     
-    automaticallyAddToScene: preferences.automaticallyAddToScene,
+    lodDistance: preferences.lodDistance,
 
     checkCollisions: preferences.checkCollisions,
     checkColiisionsOnLowerLod: preferences.checkColiisionsOnLowerLod,
 
-    lodDistance: preferences.lodDistance,
+    automaticallyAddToScene: preferences.automaticallyAddToScene,
     useOnlyAlbedoAsHigherQuality: preferences.useOnlyAlbedoAsHigherQuality,
+    convertDisplacementToParallax: preferences.convertDisplacementToParallax,
+
+    mergeOpacityAlphaToAlbedo: preferences.mergeOpacityAlphaToAlbedo,
+
+    merge3dPlants: preferences.merge3dPlants,
+    use3dPlantsNodeMaterial: preferences.use3dPlantsNodeMaterial,
 });
 
 /**
@@ -82,6 +111,12 @@ export const importPreferences = (config: any) => {
     preferences.lodDistance = config.lodDistance ?? 20;
 
     preferences.useOnlyAlbedoAsHigherQuality = config.useOnlyAlbedoAsHigherQuality ?? false;
+    preferences.convertDisplacementToParallax = config.convertDisplacementToParallax ?? false;
+
+    preferences.mergeOpacityAlphaToAlbedo = config.mergeOpacityAlphaToAlbedo ?? true;
+
+    preferences.merge3dPlants = config.merge3dPlants ?? true;
+    preferences.use3dPlantsNodeMaterial = config.use3dPlantsNodeMaterial ?? false;
 };
 
 export class QuixelPreferences {

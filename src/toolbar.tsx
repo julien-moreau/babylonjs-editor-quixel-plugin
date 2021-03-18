@@ -1,5 +1,7 @@
+import { join } from "path";
+
 import * as React from "react";
-import { Menu, MenuItem } from "@blueprintjs/core";
+import { Menu, MenuItem, MenuDivider } from "@blueprintjs/core";
 
 import { Editor } from "babylonjs-editor";
 
@@ -22,6 +24,8 @@ export class Toolbar extends React.Component<IToolbarProps> {
             <Menu>
                 <MenuItem text="Preferences..." icon="settings" onClick={() => this._handleShowPreferences()} />
                 <MenuItem text="Restart..." icon="exchange" onClick={() => this._handleRestartServer()} />
+                <MenuDivider />
+                <MenuItem text="Browse assets..." onClick={() => this._handleBrowseAssets()} />
             </Menu>
         );
     }
@@ -40,5 +44,12 @@ export class Toolbar extends React.Component<IToolbarProps> {
      */
     private _handleShowPreferences(): void {
         this.props.editor.inspector.setSelectedObject(new QuixelPreferences());
+    }
+
+    /**
+     * Called on the user wants to browse the available assets.
+     */
+    private _handleBrowseAssets(): void {
+        this.props.editor.addPluginFromPath(join(__dirname, "plugins/viewer"));
     }
 }
