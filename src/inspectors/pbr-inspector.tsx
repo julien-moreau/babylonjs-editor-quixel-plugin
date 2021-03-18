@@ -1,63 +1,73 @@
-import { MaterialInspector, MaterialAssets } from "babylonjs-editor";
+import * as React from "react";
+
 import { PBRMaterial, Texture } from "babylonjs";
-import { GUI } from "dat.gui";
+import { MaterialInspector, IObjectInspectorProps, InspectorSection, InspectorNumber, InspectorNotifier } from "babylonjs-editor";
 
-export class QuixelPBRMaterialInspector extends MaterialInspector<PBRMaterial> {
-    private _mapUVScale: number = 0;
-    private _mapUScale: number = 0;
-    private _mapVScale: number = 0;
-
+export interface IQuixelPBRMaterialInspectorState {
     /**
-     * Called on a controller finished changes.
-     * @override
+     * Defines the value of both U and V scale for the textures.
      */
-    public onControllerFinishChange(): void {
-        super.onControllerFinishChange();
-        this.editor.assets.refresh(MaterialAssets, this.material);
+    mapUVScale: number;
+    /**
+     * Defines the value of the U scale for the textures.
+     */
+    mapUScale: number;
+    /**
+     * Defines the value of the V scale for the textures.
+     */
+    mapVScale: number;
+}
+
+export class QuixelPBRMaterialInspector extends MaterialInspector<PBRMaterial, IQuixelPBRMaterialInspectorState> {
+    /**
+     * Constructor.
+     * @param props defines the component's props.
+     */
+    public constructor(props: IObjectInspectorProps) {
+        super(props);
+
+        const textures = this._getMaterialTextures();
+
+        this.state = {
+            mapUVScale: textures[0]?.uScale ?? 1,
+            mapUScale: textures[0]?.uScale ?? 1,
+            mapVScale: textures[0]?.vScale ?? 1,
+        };
     }
 
     /**
-     * Adds the common editable properties.
-     * @override
+     * Renders the content of the inspector.
      */
-    protected addCommon(): GUI {
-        const common = this.tool!.addFolder("Common");
-        
-        this.addUVScale();
+    public renderContent(): React.ReactNode {
+        const textures = this._getMaterialTextures();
 
-        return common;
+        return (
+            <>
+                <InspectorSection title="Textures">
+                    <InspectorNumber object={this.state} property="mapUVScale" label="UV Uniform Scale" onChange={(v) => {
+                        textures.forEach((t) => { t.uScale = v; t.vScale = v; });
+                    }} onFinishChange={(v) => {
+                        this.setState({ mapUScale: v, mapVScale: v }, () => {
+                            InspectorNotifier.NotifyChange(this.state, this);
+                        });
+                    }} />
+
+                    <InspectorNumber object={this.state} property="mapUScale" label="U Scale" onChange={(v) => {
+                        textures.forEach((t) => t.uScale = v);
+                    }} />
+
+                    <InspectorNumber object={this.state} property="mapVScale" label="V Scale" onChange={(v) => {
+                        textures.forEach((t) => t.vScale = v);
+                    }} />
+                </InspectorSection>
+            </>
+        );
     }
 
     /**
-     * Adds the UV scaling editable properties.
+     * Returns the list of all textures assigned to the material.
      */
-    protected addUVScale(): void {
-        const textures = this.material.getActiveTextures().filter((texture) => texture instanceof Texture) as Texture[];
-        this._mapUVScale = textures[0]?.uScale ?? 1;
-
-        const uvs = this.tool!.addFolder("UV");
-        uvs.open();
-        uvs.add(this, "_mapUVScale").min(0).step(0.01).name("UV Uniform Scale").onChange(() => {
-            textures.forEach((texture) => {
-                texture.uScale = this._mapUVScale;
-                texture.vScale = this._mapUVScale;
-            });
-
-            this.refreshDisplay();
-        });
-
-        // U and V scales
-        const uv = uvs.addFolder("UV");
-        uv.open();
-
-        this._mapUScale = textures[0]?.uScale ?? 1;
-        this._mapVScale = textures[0]?.vScale ?? 1;
-
-        uv.add(this, "_mapUScale").min(0).step(0.01).name("U Scale").onChange(() => {
-            textures.forEach((texture) => texture.uScale = this._mapUScale);
-        });
-        uv.add(this, "_mapVScale").min(0).step(0.01).name("U Scale").onChange(() => {
-            textures.forEach((texture) => texture.vScale = this._mapVScale);
-        });
+    private _getMaterialTextures(): Texture[] {
+        return this.material.getActiveTextures().filter((texture) => texture instanceof Texture) as Texture[];
     }
 }

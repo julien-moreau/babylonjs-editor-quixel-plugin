@@ -373,16 +373,19 @@ export class QuixelListener {
                 case "normal": material.bumpTexture = texture; break;
                 case "specular": material.reflectivityTexture = texture; break;
                 case "displacement": displacementTexture = texture; break;
+                case "gloss": material.microSurfaceTexture = texture; break;
+                case "ao": material.ambientTexture = texture; break;
+
+                case "metalness":
+                    material.metallicTexture = texture;
+                    material.metallic = 1;
+                    break;
 
                 case "roughness":
-                    material.microSurfaceTexture = texture;
-                    material.useAutoMicroSurfaceFromReflectivityMap = true;
+                    material.sheen.isEnabled = true;
+                    material.sheen.textureRoughness = texture;
                     break;
                 
-                case "cavity":
-                case "ao":
-                    material.ambientTexture = texture;
-                    break;
 
                 case "opacity":
                     material.opacityTexture = texture;

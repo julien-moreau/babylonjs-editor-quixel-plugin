@@ -34,13 +34,6 @@ export interface IQuixelLOD {
     variation?: number;
 }
 
-export interface IQuixelMesh {
-    /**
-     * Defines the name of the mesh files.
-     */
-    name: string;
-}
-
 export interface IQuixelExport {
     /**
      * Defines the name of the exported asset.
@@ -61,7 +54,7 @@ export interface IQuixelExport {
     /**
      * Defines the list of all meshes available.
      */
-    meshList: IQuixelMesh[];
+    meshList: IQuixelLOD[];
     /**
      * Defines the list of all available FBX files.
      */
