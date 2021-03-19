@@ -16,7 +16,7 @@ import { IQuixelComponent, IQuixelExport, IQuixelLOD } from "../quixel/types";
 import { FBXLoader } from "../fbx/loader";
 import { preferences } from "../quixel/preferences";
 
-import { TextureMergeTools } from "./mergeTexture";
+import { TextureMergeTools } from "../old/mergeTexture";
 
 export class QuixelListener {
     private static _Instance: Nullable<QuixelListener> = null;

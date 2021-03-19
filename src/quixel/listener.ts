@@ -1,17 +1,25 @@
-import { join } from "path";
-import { copyFile, readFile } from "fs-extra";
+import { extname, join } from "path";
+import { copyFile, readFile, writeFile } from "fs-extra";
 
 import { Editor, Tools, Project, FilesStore, TextureAssets } from "babylonjs-editor";
 import { Nullable } from "babylonjs-editor/shared/types";
 
-import { Mesh, VertexData, Geometry, Vector3, Space, PBRMaterial, Texture } from "babylonjs";
+import {
+    Mesh, VertexData, Geometry, Vector3, Space,
+    PBRMaterial, Texture, Quaternion,
+} from "babylonjs";
 
 import { QuixelServer } from "./server";
 import { IQuixelExport, IQuixelLOD } from "./types";
 import { preferences } from "./preferences";
 
 import { FBXLoader } from "../fbx/loader";
-import { TextureMerger } from "../tools/textureMerger";
+
+import { TextureUtils } from "../tools/textureMerger";
+
+import { MetallicAmbientPacker } from "./packers/metallic-ambient";
+import { MetallicRoughnessPacker } from "./packers/metallic-roughness";
+import { ReflectivityGlossinessPacker } from "./packers/reflectivity-glossiness";
 
 export class QuixelListener {
     private static _Instance: Nullable<QuixelListener> = null;
@@ -24,6 +32,13 @@ export class QuixelListener {
         this._Instance ??= new QuixelListener(editor);
         return this._Instance;
     }
+
+    private static _SupportedTexturesTypes: string[] = [
+        "albedo", "normal", "specular",
+        "gloss", "ao", "metalness",
+        "opacity", "roughness",
+        "translucency",
+    ];
 
     private _editor: Editor;
     private _queue: IQuixelExport[] = [];
@@ -88,12 +103,45 @@ export class QuixelListener {
             return;
         }
 
-        const promises = json.components.map(async (c) => {
-            const path = join(Project.DirPath!, "files", c.name);
-            await copyFile(c.path, path);
-            
-            this._editor.console.logInfo(`Copied texture "${c.name}" at ${path}`);
-            FilesStore.AddFile(path);
+        const components = json.components.filter((c) => QuixelListener._SupportedTexturesTypes.indexOf(c.type) !== -1);
+        const promises = components.map(async (c) => {
+            // Simply copy?
+            if (c.type === "albedo" || !preferences.useOnlyAlbedoAsHigherQuality) {
+                const path = join(Project.DirPath!, "files", c.name);
+                
+                await copyFile(c.path, path);
+                FilesStore.AddFile(path);
+
+                return this._editor.console.logInfo(`Copied texture "${c.name}" at ${path}`);
+            }
+
+            // Resize to lower resolution
+            try {
+                const texture = await new Promise<Texture>((resolve, reject) => {
+                    const texture = new Texture(c.path, this._editor.scene!, false, true, undefined, () => {
+                        resolve(texture);
+                    }, (_, e) => {
+                        reject(e);
+                    });
+                });
+
+                const resizedTexture = await TextureUtils.ResizeTexture(texture);
+                const resizedTextureBlob = await TextureUtils.GetTextureBlob(resizedTexture);
+
+                if (resizedTextureBlob) {
+                    const replacedName = c.name.replace(extname(c.name), ".png");
+                    c.name = replacedName;
+
+                    const path = join(Project.DirPath!, "files", replacedName);
+
+                    await writeFile(path, Buffer.from(await Tools.ReadFileAsArrayBuffer(resizedTextureBlob)));
+                    FilesStore.AddFile(path);
+
+                    this._editor.console.logInfo(`Copied resized texture "${c.name}" at ${path}`);
+                }
+            } catch (e) {
+                // Catch silently.
+            }
         });
 
         await Promise.all(promises);
@@ -171,8 +219,9 @@ export class QuixelListener {
             mesh.scaling.setAll(preferences.objectScale);
             mesh.rotate(new Vector3(1, 0, 0), -Math.PI * 0.5, Space.LOCAL);
             mesh.id = Tools.RandomId();
-            mesh.receiveShadows = true;
             mesh.isPickable = false;
+            mesh.receiveShadows = true;
+            mesh.checkCollisions = false;
             mesh.metadata = {
                 isFromQuixel: true,
                 lodDistance: preferences.lodDistance,
@@ -196,16 +245,35 @@ export class QuixelListener {
 
         // Sort meshes.
         parsedMeshes.sort((a, b) => a.index - b.index);
+
+        // Configure meshes
         parsedMeshes.forEach((m, index) => {
             if (index === 0) {
                 m.mesh.name = name;
                 m.mesh.scaling.scale(preferences.objectScale);
+
+                if (preferences.checkCollisions && !preferences.checkColiisionsOnLowerLod) {
+                    m.mesh.checkCollisions = true;
+                }
+
                 return this._editor.scene!.lights.forEach((l) => {
                     l.getShadowGenerator()?.getShadowMap()?.renderList?.push(m.mesh);
                 });
             }
 
             parsedMeshes[0].mesh.addLODLevel(preferences.lodDistance * index, m.mesh);
+
+            if (preferences.checkCollisions && preferences.checkColiisionsOnLowerLod && index === parsedMeshes.length - 1) {
+                m.mesh.metadata ??= { };
+                m.mesh.metadata.keepGeometryInline = true;
+
+                const collisionsInstance = m.mesh.createInstance("collisionsInstance");
+                collisionsInstance.checkCollisions = true;
+                collisionsInstance.parent = parsedMeshes[0].mesh;
+                collisionsInstance.isVisible = false;
+                collisionsInstance.id = Tools.RandomId();
+                collisionsInstance.rotationQuaternion = Quaternion.Identity();
+            }
         });
 
         // Refresh graph
@@ -226,25 +294,25 @@ export class QuixelListener {
             return material;
         }
 
-        const supportedComponents = [
-            "albedo", "normal", "specular",
-            "gloss", "ao", "metalness",
-            "opacity", "roughness",
-            "translucency",
-        ];
-
         const texturesAssets = this._editor.assets.getComponent(TextureAssets);
         if (!texturesAssets) {
             return material;
         }
 
+        let reflectivityTexture: Nullable<Texture> = null;
+        let microSurfaceTexture: Nullable<Texture> = null;
+
         let metallicTexture: Nullable<Texture> = null;
         let roughnessTexture: Nullable<Texture> = null;
 
-        const components = json.components.filter((c) => supportedComponents.indexOf(c.type) !== -1);
+        let aoTexture: Nullable<Texture> = null;
+
+        const components = json.components.filter((c) => QuixelListener._SupportedTexturesTypes.indexOf(c.type) !== -1);
         const promises = components.map(async (c) => {
             const path = join("files", c.name);
             let texture: Texture;
+
+            console.log(c.name);
 
             try {
                 texture = await new Promise<Texture>((resolve, reject) => {
@@ -262,11 +330,12 @@ export class QuixelListener {
             switch (c.type) {
                 case "albedo": material.albedoTexture = texture; break;
                 case "normal": material.bumpTexture = texture; break;
-                case "specular": material.reflectivityTexture = texture; break;
-                case "gloss": material.microSurfaceTexture = texture; break;
 
+                case "specular": reflectivityTexture = texture; break;
+                case "gloss": microSurfaceTexture = texture; break;
                 case "metalness": metallicTexture = texture; break;
                 case "roughness": roughnessTexture = texture; break;
+                case "ao": aoTexture = texture; break;
 
                 case "opacity":
                     material.opacityTexture = texture;
@@ -282,52 +351,14 @@ export class QuixelListener {
 
         await Promise.all(promises);
 
-        // Configure metallic roughness workflow.
-        if (metallicTexture && roughnessTexture) {
-            const packedMetallicTexturePath = await TextureMerger.MergeTextures(metallicTexture, roughnessTexture, (color1, color2) => ({
-                r: 0,
-                g: color2.r,
-                b: color1.r,
-                a: 255,
-            }));
+        // Pack textures
+        await Promise.all([
+            ReflectivityGlossinessPacker.Pack(this._editor, material, reflectivityTexture, microSurfaceTexture),
+            MetallicRoughnessPacker.Pack(this._editor, material, metallicTexture, roughnessTexture),
+        ]);
 
-            if (packedMetallicTexturePath) {
-                metallicTexture!.dispose();
-                roughnessTexture!.dispose();
-
-                const packedMetallicTexture = await new Promise<Texture>((resolve, reject) => {
-                    const texture = new Texture(packedMetallicTexturePath, this._editor.scene!, false, true, undefined, () => {
-                        texturesAssets.configureTexturePath(texture);
-                        resolve(texture);
-                    }, (_, e) => {
-                        reject(e);
-                    });
-                });
-
-                FilesStore.AddFile(packedMetallicTexturePath);
-                
-                material.metallicTexture = packedMetallicTexture;
-                material.metallic = 1;
-                material.roughness = 1;
-                material.useRoughnessFromMetallicTextureAlpha = false;
-                material.useRoughnessFromMetallicTextureGreen = true;
-                material.useMetallnessFromMetallicTextureBlue = true;
-            }
-        } else if (metallicTexture) {
-            material.metallicTexture = metallicTexture;
-            material.metallic = 1;
-            material.roughness = 0;
-            material.useRoughnessFromMetallicTextureAlpha = false;
-            material.useRoughnessFromMetallicTextureGreen = false;
-            material.useMetallnessFromMetallicTextureBlue = true;
-        } else if (roughnessTexture) {
-            material.metallicTexture = roughnessTexture;
-            material.metallic = 0;
-            material.roughness = 1;
-            material.useRoughnessFromMetallicTextureAlpha = false;
-            material.useRoughnessFromMetallicTextureGreen = true;
-            material.useMetallnessFromMetallicTextureBlue = false;
-        }
+        // Pack ao with metal
+        await MetallicAmbientPacker.Pack(this._editor, material, material.metallicTexture as Texture, aoTexture);
 
         // Add metadata
         if (json.type === "surface") {

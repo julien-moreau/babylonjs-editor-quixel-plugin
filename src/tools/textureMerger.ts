@@ -4,7 +4,7 @@ import { basename, extname, join } from "path";
 import { Project, Tools } from "babylonjs-editor";
 import { Nullable } from "babylonjs-editor/shared/types";
 
-import { Tools as BabylonTools, Texture, ISize } from "babylonjs";
+import { Tools as BabylonTools, Texture, ISize, TextureTools } from "babylonjs";
 import { WorkerTools } from "./workers";
 
 export interface IMergedColor {
@@ -26,7 +26,7 @@ export interface IMergedColor {
     a: number;
 }
 
-export class TextureMerger {
+export class TextureUtils {
     /**
      * Merges the two given textures to the desized format.
      * @param a defines the reference to the first texture.
@@ -75,6 +75,33 @@ export class TextureMerger {
         await writeFile(dest, Buffer.from(await Tools.ReadFileAsArrayBuffer(blob)));
 
         return dest;
+    }
+
+    /**
+     * Resizes the given texture to target a size of 1024x1024.
+     * @param texture defines the reference to the texture to resize.
+     */
+    public static async ResizeTexture(texture: Texture): Promise<Texture> {
+        const resizedTexture = TextureTools.CreateResizedCopy(texture, 1024, 1024, true);
+        
+        while (!resizedTexture.isReady()) {
+            await Tools.Wait(150);
+        }
+
+        return resizedTexture;
+    }
+
+    /**
+     * Converts the given texture to a readable png blob.
+     * @param texture defines the reference to the texture to convert ot a png blob.
+     */
+    public static async GetTextureBlob(texture: Texture): Promise<Nullable<Blob>> {
+        const buffer = texture.readPixels()?.buffer;
+        if (!buffer) { return null; }
+
+        const pixels = new Uint8ClampedArray(buffer);
+
+        return this._ConvertPixelsToBlobImage(texture.getSize(), pixels);
     }
 
     /**
