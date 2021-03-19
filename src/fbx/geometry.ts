@@ -29,22 +29,38 @@ export class FBXGeometry {
      * Parses the given Geometry node.
      * @param geoNode defines the "Geometry" object from the FBX file.
      */
-    public parse(geoNode: IStringDictionary<IFBXNode>): IFBXGeometry {
+    public parse(geoNode: IStringDictionary<IFBXNode>): IFBXGeometry[] {
+        return this._recursivelyParse(geoNode, []);
+    }
+
+    /**
+     * Recursively parses the geometries taking according to the given root geometry.
+     */
+    private _recursivelyParse(rootNode: IStringDictionary<IFBXNode>, geometries: IFBXGeometry[]): IFBXGeometry[] {
         const geo: IFBXGeometryInformations = {
-            vertexPositions: geoNode.Vertices?.a ?? [],
-            vertexIndices: geoNode.PolygonVertexIndex?.a ?? [],
-            normal: this._parseNormals(geoNode.LayerElementNormal),
-            uv: this._parseUVs(geoNode.LayerElementUV),
+            vertexPositions: rootNode.Vertices?.a ?? [],
+            vertexIndices: rootNode.PolygonVertexIndex?.a ?? [],
+            normal: this._parseNormals(rootNode.LayerElementNormal),
+            uv: this._parseUVs(rootNode.LayerElementUV),
         };
 
         const buffers = this._genBuffers(geo);
 
-        return {
+        geometries.push({
             positions: buffers.vertex,
             indices: buffers.index,
             normals: buffers.normal,
             uvs: buffers.uvs,
-        };
+        });
+
+        for (const key in rootNode) {
+            const value = rootNode[key] as IStringDictionary<IFBXNode>;
+            if (value?.name === "Geometry") {
+                this._recursivelyParse(value, geometries);
+            }
+        }
+
+        return geometries;
     }
 
     /**

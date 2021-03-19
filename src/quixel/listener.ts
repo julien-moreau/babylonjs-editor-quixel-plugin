@@ -21,6 +21,17 @@ import { MetallicAmbientPacker } from "./packers/metallic-ambient";
 import { MetallicRoughnessPacker } from "./packers/metallic-roughness";
 import { ReflectivityGlossinessPacker } from "./packers/reflectivity-glossiness";
 
+export interface IParsedMesh {
+    /**
+     * Defines the index of the meshes in the avaialbe meshes variations.
+     */
+    index: number;
+    /**
+     * Defines the reference to the list of meshes for the current variation.
+     */
+    meshes: { index: number; mesh: Mesh }[];
+}
+
 export class QuixelListener {
     private static _Instance: Nullable<QuixelListener> = null;
 
@@ -201,85 +212,103 @@ export class QuixelListener {
      * Creates all the meshes including their LODs.
      */
     private async _createMeshes(name: string, lodList: IQuixelLOD[]): Promise<Mesh[]> {
-        const parsedMeshes: { index: number; mesh: Mesh }[] = [];
-        const promises = lodList.map(async (lod, index) => {
+        const parsedMeshes: IParsedMesh[] = [];
+
+        const promises = lodList.map(async (lod, lodIndex) => {
             const content = await readFile(lod.path);
             if (!FBXLoader.IsValidFBX(content)) {
                 return this._editor.console.logWarning(`Can't parse FBX file "${lod.lodObjectName}": not valid file.`);;
             }
 
             const loader = new FBXLoader(content);
-            const geometryData = loader.parse();
+            const geometries = loader.parse();
 
-            if (!geometryData) {
+            if (!geometries?.length) {
                 return this._editor.console.logWarning(`Mesh "${lod.lodObjectName}" has no geometry. Skipping.`);
             }
 
-            const mesh = new Mesh(lod.lodObjectName, this._editor.scene!);
-            mesh.scaling.setAll(preferences.objectScale);
-            mesh.rotate(new Vector3(1, 0, 0), -Math.PI * 0.5, Space.LOCAL);
-            mesh.id = Tools.RandomId();
-            mesh.isPickable = false;
-            mesh.receiveShadows = true;
-            mesh.checkCollisions = false;
-            mesh.metadata = {
-                isFromQuixel: true,
-                lodDistance: preferences.lodDistance,
-            };
+            geometries.forEach((g, geometryIndex) => {
+                let variation = parsedMeshes.find((pm) => pm.index === geometryIndex);
+                if (!variation) {
+                    parsedMeshes.push(variation = { index: geometryIndex, meshes: [] });
+                }
 
-            const vertexData = new VertexData();
-            vertexData.positions = geometryData.positions;
-            vertexData.indices = geometryData.indices ?? null;
-            vertexData.normals = geometryData.normals ?? [];
-            vertexData.uvs = geometryData.uvs ?? [];
+                const mesh = new Mesh(lod.lodObjectName, this._editor.scene!);
+                mesh.scaling.setAll(preferences.objectScale);
+                mesh.rotate(new Vector3(1, 0, 0), -Math.PI * 0.5, Space.LOCAL);
+                mesh.id = Tools.RandomId();
+                mesh.isPickable = false;
+                mesh.receiveShadows = true;
+                mesh.checkCollisions = false;
+                mesh.metadata = {
+                    isFromQuixel: true,
+                    lodDistance: preferences.lodDistance,
+                };
 
-            const geometry = new Geometry(Tools.RandomId(), this._editor.scene!, vertexData, false);
-            geometry.applyToMesh(mesh);
+                const vertexData = new VertexData();
+                vertexData.positions = g.positions;
+                vertexData.indices = g.indices ?? null;
+                vertexData.normals = g.normals ?? [];
+                vertexData.uvs = g.uvs ?? [];
 
-            parsedMeshes.push({ index, mesh });
+                const geometry = new Geometry(Tools.RandomId(), this._editor.scene!, vertexData, false);
+                geometry.applyToMesh(mesh);
 
-            this._editor.console.logInfo(`Created mesh "${lod.lodObjectName}"`);
+                variation.meshes.push({ index: lodIndex, mesh });
+
+                this._editor.console.logInfo(`Created mesh "${lod.lodObjectName}"`);
+            });
         });
 
         await Promise.all(promises);
 
         // Sort meshes.
         parsedMeshes.sort((a, b) => a.index - b.index);
+        parsedMeshes.forEach((pm) => {
+            pm.meshes.sort((a, b) => a.index - b.index);
+        });
 
         // Configure meshes
-        parsedMeshes.forEach((m, index) => {
-            if (index === 0) {
-                m.mesh.name = name;
-                m.mesh.scaling.scale(preferences.objectScale);
+        parsedMeshes.forEach((pm, pmIndex) => {
+            pm.meshes.forEach((m, index) => {
+                if (index === 0) {
+                    m.mesh.name = name;
+                    m.mesh.scaling.scale(preferences.objectScale);
 
-                if (preferences.checkCollisions && !preferences.checkColiisionsOnLowerLod) {
-                    m.mesh.checkCollisions = true;
+                    if (preferences.checkCollisions && !preferences.checkColiisionsOnLowerLod) {
+                        m.mesh.checkCollisions = true;
+                    }
+
+                    return this._editor.scene!.lights.forEach((l) => {
+                        l.getShadowGenerator()?.getShadowMap()?.renderList?.push(m.mesh);
+                    });
                 }
 
-                return this._editor.scene!.lights.forEach((l) => {
-                    l.getShadowGenerator()?.getShadowMap()?.renderList?.push(m.mesh);
-                });
-            }
+                parsedMeshes[pmIndex].meshes[0].mesh.addLODLevel(preferences.lodDistance * index, m.mesh);
 
-            parsedMeshes[0].mesh.addLODLevel(preferences.lodDistance * index, m.mesh);
+                if (preferences.checkCollisions && preferences.checkColiisionsOnLowerLod && index === parsedMeshes.length - 1) {
+                    m.mesh.metadata ??= { };
+                    m.mesh.metadata.keepGeometryInline = true;
 
-            if (preferences.checkCollisions && preferences.checkColiisionsOnLowerLod && index === parsedMeshes.length - 1) {
-                m.mesh.metadata ??= { };
-                m.mesh.metadata.keepGeometryInline = true;
-
-                const collisionsInstance = m.mesh.createInstance("collisionsInstance");
-                collisionsInstance.checkCollisions = true;
-                collisionsInstance.parent = parsedMeshes[0].mesh;
-                collisionsInstance.isVisible = false;
-                collisionsInstance.id = Tools.RandomId();
-                collisionsInstance.rotationQuaternion = Quaternion.Identity();
-            }
+                    const collisionsInstance = m.mesh.createInstance("collisionsInstance");
+                    collisionsInstance.checkCollisions = true;
+                    collisionsInstance.parent = parsedMeshes[pmIndex].meshes[0].mesh;
+                    collisionsInstance.isVisible = false;
+                    collisionsInstance.id = Tools.RandomId();
+                    collisionsInstance.rotationQuaternion = Quaternion.Identity();
+                }
+            });
         });
 
         // Refresh graph
         this._editor.graph.refresh();
 
-        return parsedMeshes.map((m) => m.mesh);
+        const result: Mesh[] = [];
+        parsedMeshes.forEach((pm) => {
+            pm.meshes.forEach((m) => result.push((m.mesh)));
+        });
+
+        return result;
     }
 
     /**
@@ -311,8 +340,6 @@ export class QuixelListener {
         const promises = components.map(async (c) => {
             const path = join("files", c.name);
             let texture: Texture;
-
-            console.log(c.name);
 
             try {
                 texture = await new Promise<Texture>((resolve, reject) => {

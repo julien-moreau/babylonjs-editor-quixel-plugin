@@ -39,7 +39,7 @@ export class FBXLoader {
     /**
      * Parses the FBX file.
      */
-    public parse(): Nullable<IFBXGeometry> {
+    public parse(): Nullable<IFBXGeometry[]> {
         const nodes: IStringDictionary<IFBXNode> = {};
         while (!this._isEndOfContent()) {
             const node = this._parseNode();

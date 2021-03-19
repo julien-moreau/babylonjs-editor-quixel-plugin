@@ -260,7 +260,7 @@ export class QuixelListener {
      */
     private _parseMesh(lod: IQuixelLOD, lodContent: Buffer, scene: Scene): Nullable<Mesh> {
         const loader = new FBXLoader(lodContent);
-        const geometryData = loader.parse();
+        const geometryData = loader.parse()?.[0];
         if (!geometryData) { return null; }
 
         const mesh = new Mesh(lod.lodObjectName, scene);
