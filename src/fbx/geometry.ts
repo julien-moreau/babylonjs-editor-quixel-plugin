@@ -1,6 +1,6 @@
 import { IStringDictionary, Nullable } from "babylonjs-editor/shared/types";
 
-import { IFBXGeometry, IFBXNode } from "./types";
+import { IFBXGeometry, IFBXNode, IFBXConnections } from "./types";
 
 export interface IFBXParsedData {
     dataSize: number;
@@ -28,39 +28,49 @@ export class FBXGeometry {
     /**
      * Parses the given Geometry node.
      * @param geoNode defines the "Geometry" object from the FBX file.
+     * @param connections defines the reference to the connections of FBX nodes. Mainly used to keep orders of exports.
      */
-    public parse(geoNode: IStringDictionary<IFBXNode>): IFBXGeometry[] {
-        return this._recursivelyParse(geoNode, []);
+    public parse(geoNode: IStringDictionary<IFBXNode>, connections: IFBXConnections): IFBXGeometry[] {
+        return this._recursivelyParse(geoNode, [], connections);
     }
 
     /**
      * Recursively parses the geometries taking according to the given root geometry.
      */
-    private _recursivelyParse(rootNode: IStringDictionary<IFBXNode>, geometries: IFBXGeometry[]): IFBXGeometry[] {
+    private _recursivelyParse(rootNode: IStringDictionary<IFBXNode>, geometries: IFBXGeometry[], connections: IFBXConnections): IFBXGeometry[] {
+        geometries.push(this._genGeomeetry(rootNode));
+
+        connections.forEach((c) => {
+            const id = c[0].toString();
+            const value = rootNode[id] as IStringDictionary<IFBXNode>;
+
+            if (value?.name === "Geometry") {
+                this._recursivelyParse(value, geometries, connections);
+            }
+        });
+
+        return geometries;
+    }
+
+    /**
+     * Returns the geometry data according to the given geometry node.
+     */
+    private _genGeomeetry(geoNode: IStringDictionary<IFBXNode>): IFBXGeometry {
         const geo: IFBXGeometryInformations = {
-            vertexPositions: rootNode.Vertices?.a ?? [],
-            vertexIndices: rootNode.PolygonVertexIndex?.a ?? [],
-            normal: this._parseNormals(rootNode.LayerElementNormal),
-            uv: this._parseUVs(rootNode.LayerElementUV),
+            vertexPositions: geoNode.Vertices?.a ?? [],
+            vertexIndices: geoNode.PolygonVertexIndex?.a ?? [],
+            normal: this._parseNormals(geoNode.LayerElementNormal),
+            uv: this._parseUVs(geoNode.LayerElementUV),
         };
 
         const buffers = this._genBuffers(geo);
 
-        geometries.push({
+        return {
             positions: buffers.vertex,
             indices: buffers.index,
             normals: buffers.normal,
             uvs: buffers.uvs,
-        });
-
-        for (const key in rootNode) {
-            const value = rootNode[key] as IStringDictionary<IFBXNode>;
-            if (value?.name === "Geometry") {
-                this._recursivelyParse(value, geometries);
-            }
-        }
-
-        return geometries;
+        };
     }
 
     /**

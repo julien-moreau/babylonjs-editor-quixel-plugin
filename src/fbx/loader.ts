@@ -52,7 +52,10 @@ export class FBXLoader {
         const geometry = nodes["Objects"]["Geometry"]
         if (!geometry) { return null; }
 
-        return new FBXGeometry().parse(geometry);
+        const connections = nodes["Connections"].connections;
+        if (!connections) { return null; }
+
+        return new FBXGeometry().parse(geometry, connections);
     }
 
     /**

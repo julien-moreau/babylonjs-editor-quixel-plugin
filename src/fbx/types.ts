@@ -5,7 +5,7 @@ export interface IFBXNode {
     propertyList?: any[];
     attrName?: string;
     attrType?: string;
-    connections?: any[];
+    connections?: IFBXConnections;
     a?: any;
 }
 
@@ -16,3 +16,5 @@ export interface IFBXGeometry {
     normals?: number[];
     uvs?: number[];
 }
+
+export type IFBXConnections = number[][];

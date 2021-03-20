@@ -139,6 +139,9 @@ export class QuixelListener {
                 const resizedTexture = await TextureUtils.ResizeTexture(texture);
                 const resizedTextureBlob = await TextureUtils.GetTextureBlob(resizedTexture);
 
+                texture.dispose();
+                resizedTexture.dispose();
+
                 if (resizedTextureBlob) {
                     const replacedName = c.name.replace(extname(c.name), ".png");
                     c.name = replacedName;
