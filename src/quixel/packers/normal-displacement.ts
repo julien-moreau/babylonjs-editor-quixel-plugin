@@ -47,7 +47,7 @@ export class NormalDisplacementPacker {
                 material.bumpTexture = packedBumpTexture;
                 material.useParallax = true;
                 material.useParallaxOcclusion = true;
-                material.parallaxScaleBias = 0.04;
+                material.parallaxScaleBias = -0.04;
             }
         } else {
             material.bumpTexture = bumpTexture!;

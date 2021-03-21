@@ -324,8 +324,8 @@ export class QuixelListener {
      */
     private async _createMaterial(json: IQuixelExport, displacement?: IQuixelComponent): Promise<PBRMaterial> {
         const material = new PBRMaterial(json.name, this._editor.scene!);
-        material.invertNormalMapX = false;
-        material.invertNormalMapY = false;
+        material.invertNormalMapX = true;
+        material.invertNormalMapY = true;
 
         if (!Project.DirPath) {
             return material;
