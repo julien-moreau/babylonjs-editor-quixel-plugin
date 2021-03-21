@@ -1,7 +1,10 @@
 import * as React from "react";
 
 import { PBRMaterial, Texture } from "babylonjs";
-import { MaterialInspector, IObjectInspectorProps, InspectorSection, InspectorNumber, InspectorNotifier } from "babylonjs-editor";
+import {
+    MaterialInspector, IObjectInspectorProps, InspectorSection, InspectorNumber,
+    InspectorNotifier,
+} from "babylonjs-editor";
 
 export interface IQuixelPBRMaterialInspectorState {
     /**

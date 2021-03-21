@@ -36,7 +36,7 @@ export const registerEditorPlugin = (editor: Editor): IPlugin => {
                 ctor: QuixelPBRMaterialInspector,
                 ctorNames: ["PBRMaterial"],
                 title: "Quixel PBR",
-                isSupported: (o) => MaterialInspector.IsObjectSupported(o, PBRMaterial) && o.metadata?.isFromQuixel === true,
+                isSupported: (o) => MaterialInspector.IsObjectSupported(o, PBRMaterial) && MaterialInspector.GetMaterialOfObject(o)?.metadata?.isFromQuixel === true,
             },
             {
                 ctor: QuixelPluginPreferencesInspector,

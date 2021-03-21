@@ -34,20 +34,24 @@ export interface IQuixelPreferences {
      * Defines wether or not only albedo texture should be used as higher quality.
      */
     useOnlyAlbedoAsHigherQuality: boolean;
+    /**
+     * Defines wether or not displacement texture should be used as parallax.
+     */
+    convertDisplacementToParallax: boolean;
 }
 
 export const preferences: IQuixelPreferences = {
     objectScale: 1,
     ambientColor: Color3.Black(),
-
-    automaticallyAddToScene: true,
+    
+    lodDistance: 20,
 
     checkCollisions: false,
     checkColiisionsOnLowerLod: false,
-
-    lodDistance: 20,
-
+    
+    automaticallyAddToScene: true,
     useOnlyAlbedoAsHigherQuality: false,
+    convertDisplacementToParallax: false,
 };
 
 /**
@@ -57,13 +61,14 @@ export const exportPreferences = () => ({
     objectScale: preferences.objectScale,
     ambientColor: preferences.ambientColor.asArray(),
     
-    automaticallyAddToScene: preferences.automaticallyAddToScene,
+    lodDistance: preferences.lodDistance,
 
     checkCollisions: preferences.checkCollisions,
     checkColiisionsOnLowerLod: preferences.checkColiisionsOnLowerLod,
 
-    lodDistance: preferences.lodDistance,
+    automaticallyAddToScene: preferences.automaticallyAddToScene,
     useOnlyAlbedoAsHigherQuality: preferences.useOnlyAlbedoAsHigherQuality,
+    convertDisplacementToParallax: preferences.convertDisplacementToParallax,
 });
 
 /**
@@ -82,6 +87,7 @@ export const importPreferences = (config: any) => {
     preferences.lodDistance = config.lodDistance ?? 20;
 
     preferences.useOnlyAlbedoAsHigherQuality = config.useOnlyAlbedoAsHigherQuality ?? false;
+    preferences.convertDisplacementToParallax = config.convertDisplacementToParallax ?? false;
 };
 
 export class QuixelPreferences {

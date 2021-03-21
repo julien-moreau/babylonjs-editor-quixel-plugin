@@ -10,7 +10,7 @@ import {
 } from "babylonjs";
 
 import { QuixelServer } from "./server";
-import { IQuixelExport, IQuixelLOD } from "./types";
+import { IQuixelComponent, IQuixelExport, IQuixelLOD } from "./types";
 import { preferences } from "./preferences";
 
 import { FBXLoader } from "../fbx/loader";
@@ -19,6 +19,7 @@ import { TextureUtils } from "../tools/textureMerger";
 
 import { MetallicAmbientPacker } from "./packers/metallic-ambient";
 import { MetallicRoughnessPacker } from "./packers/metallic-roughness";
+import { NormalDisplacementPacker } from "./packers/normal-displacement";
 import { ReflectivityGlossinessPacker } from "./packers/reflectivity-glossiness";
 
 export interface IParsedMesh {
@@ -48,7 +49,7 @@ export class QuixelListener {
         "albedo", "normal", "specular",
         "gloss", "ao", "metalness",
         "opacity", "roughness",
-        "translucency",
+        "translucency", "displacement",
     ];
 
     private _editor: Editor;
@@ -166,11 +167,12 @@ export class QuixelListener {
      */
     private async _handleExport(json: IQuixelExport): Promise<void> {
         // A material exists in any cases
-        const material = await this._createMaterial(json);
+        const displacement = json.components.find((c) => c.type === "displacement");
+        const material = await this._createMaterial(json, displacement);
 
         switch (json.type) {
             case "3d":
-                await this._handle3dExport(json, material);
+                await this._handle3dExport(json, material, displacement);
                 break;
 
             case "3dplant":
@@ -182,8 +184,8 @@ export class QuixelListener {
     /**
      * Handles exports of type "3d" (3d assets).
      */
-    private async _handle3dExport(json: IQuixelExport, material: PBRMaterial): Promise<void> {
-        const meshes = await this._createMeshes(json.name, json.lodList);
+    private async _handle3dExport(json: IQuixelExport, material: PBRMaterial, displacement?: IQuixelComponent): Promise<void> {
+        const meshes = await this._createMeshes(json.name, json.lodList, displacement);
         meshes.forEach((m) => m.material = material);
     }
 
@@ -214,7 +216,7 @@ export class QuixelListener {
     /**
      * Creates all the meshes including their LODs.
      */
-    private async _createMeshes(name: string, lodList: IQuixelLOD[]): Promise<Mesh[]> {
+    private async _createMeshes(name: string, lodList: IQuixelLOD[], displacement?: IQuixelComponent): Promise<Mesh[]> {
         const parsedMeshes: IParsedMesh[] = [];
 
         const promises = lodList.map(async (lod, lodIndex) => {
@@ -254,8 +256,11 @@ export class QuixelListener {
                 vertexData.normals = g.normals ?? [];
                 vertexData.uvs = g.uvs ?? [];
 
-                const geometry = new Geometry(Tools.RandomId(), this._editor.scene!, vertexData, false);
+                const geometry = new Geometry(Tools.RandomId(), this._editor.scene!, vertexData, true);
                 geometry.applyToMesh(mesh);
+
+                // Apply displacement
+                console.log("Displacement not yet available, skipping: ", displacement);
 
                 variation.meshes.push({ index: lodIndex, mesh });
 
@@ -317,10 +322,10 @@ export class QuixelListener {
     /**
      * Creates the material acording to the given json configuration.
      */
-    private async _createMaterial(json: IQuixelExport): Promise<PBRMaterial> {
+    private async _createMaterial(json: IQuixelExport, displacement?: IQuixelComponent): Promise<PBRMaterial> {
         const material = new PBRMaterial(json.name, this._editor.scene!);
-        material.invertNormalMapX = true;
-        material.invertNormalMapY = true;
+        material.invertNormalMapX = false;
+        material.invertNormalMapY = false;
 
         if (!Project.DirPath) {
             return material;
@@ -336,6 +341,9 @@ export class QuixelListener {
 
         let metallicTexture: Nullable<Texture> = null;
         let roughnessTexture: Nullable<Texture> = null;
+
+        let bumpTexture: Nullable<Texture> = null;
+        let displacementTexture: Nullable<Texture> = null;
 
         let aoTexture: Nullable<Texture> = null;
 
@@ -359,7 +367,9 @@ export class QuixelListener {
 
             switch (c.type) {
                 case "albedo": material.albedoTexture = texture; break;
-                case "normal": material.bumpTexture = texture; break;
+
+                case "normal": bumpTexture = texture; break;
+                case "displacement": displacementTexture = texture; break;
 
                 case "specular": reflectivityTexture = texture; break;
                 case "gloss": microSurfaceTexture = texture; break;
@@ -372,10 +382,10 @@ export class QuixelListener {
                     texture.getAlphaFromRGB = true;
                     break;
 
-                case "translucency":
-                    material.subSurface.isTranslucencyEnabled = true;
-                    material.subSurface.thicknessTexture = texture;
-                    break;
+                // case "translucency":
+                //     material.subSurface.isTranslucencyEnabled = true;
+                //     material.subSurface.thicknessTexture = texture;
+                //     break;
             }
         });
 
@@ -385,6 +395,7 @@ export class QuixelListener {
         await Promise.all([
             ReflectivityGlossinessPacker.Pack(this._editor, material, reflectivityTexture, microSurfaceTexture),
             MetallicRoughnessPacker.Pack(this._editor, material, metallicTexture, roughnessTexture),
+            NormalDisplacementPacker.Pack(this._editor, material, bumpTexture, displacementTexture),
         ]);
 
         // Pack ao with metal
@@ -394,6 +405,7 @@ export class QuixelListener {
         if (json.type === "surface") {
             material.metadata = {
                 isFromQuixel: true,
+                quixelDisplacement: displacement,
             };
         }
         
