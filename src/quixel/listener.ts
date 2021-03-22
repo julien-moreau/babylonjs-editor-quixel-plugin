@@ -17,6 +17,7 @@ import { FBXLoader } from "../fbx/loader";
 
 import { TextureUtils } from "../tools/textureMerger";
 
+import { AlbedoOpacityPacker } from "./packers/albedo-opacity";
 import { MetallicAmbientPacker } from "./packers/metallic-ambient";
 import { MetallicRoughnessPacker } from "./packers/metallic-roughness";
 import { NormalDisplacementPacker } from "./packers/normal-displacement";
@@ -117,8 +118,23 @@ export class QuixelListener {
 
         const components = json.components.filter((c) => QuixelListener._SupportedTexturesTypes.indexOf(c.type) !== -1);
         const promises = components.map(async (c) => {
+            // Get mode
+            let simpleCopy = true;
+
+            if (preferences.useOnlyAlbedoAsHigherQuality) {
+                simpleCopy = false;
+
+                if (c.type === "albedo") {
+                    simpleCopy = true;
+                }
+
+                if (c.type === "opacity" && preferences.mergeOpacityAlphaToAlbedo) {
+                    simpleCopy = true;
+                }
+            }
+
             // Simply copy?
-            if (c.type === "albedo" || !preferences.useOnlyAlbedoAsHigherQuality) {
+            if (simpleCopy) {
                 const path = join(Project.DirPath!, "files", c.name);
                 
                 await copyFile(c.path, path);
@@ -336,6 +352,9 @@ export class QuixelListener {
             return material;
         }
 
+        let albedoTexture: Nullable<Texture> = null;
+        let opacityTexture: Nullable<Texture> = null;
+
         let reflectivityTexture: Nullable<Texture> = null;
         let microSurfaceTexture: Nullable<Texture> = null;
 
@@ -366,7 +385,8 @@ export class QuixelListener {
             }
 
             switch (c.type) {
-                case "albedo": material.albedoTexture = texture; break;
+                case "albedo": albedoTexture = texture; break;
+                case "opacity": opacityTexture = texture; break;
 
                 case "normal": bumpTexture = texture; break;
                 case "displacement": displacementTexture = texture; break;
@@ -377,15 +397,11 @@ export class QuixelListener {
                 case "roughness": roughnessTexture = texture; break;
                 case "ao": aoTexture = texture; break;
 
-                case "opacity":
-                    material.opacityTexture = texture;
-                    texture.getAlphaFromRGB = true;
+                case "translucency":
+                    material.subSurface.isTranslucencyEnabled = true;
+                    material.subSurface.thicknessTexture = texture;
+                    material.subSurface.useMaskFromThicknessTexture = true;
                     break;
-
-                // case "translucency":
-                //     material.subSurface.isTranslucencyEnabled = true;
-                //     material.subSurface.thicknessTexture = texture;
-                //     break;
             }
         });
 
@@ -393,6 +409,7 @@ export class QuixelListener {
 
         // Pack textures
         await Promise.all([
+            AlbedoOpacityPacker.Pack(this._editor, material, albedoTexture, opacityTexture),
             ReflectivityGlossinessPacker.Pack(this._editor, material, reflectivityTexture, microSurfaceTexture),
             MetallicRoughnessPacker.Pack(this._editor, material, metallicTexture, roughnessTexture),
             NormalDisplacementPacker.Pack(this._editor, material, bumpTexture, displacementTexture),
@@ -407,6 +424,11 @@ export class QuixelListener {
                 isFromQuixel: true,
                 quixelDisplacement: displacement,
             };
+        }
+
+        // 3d plants
+        if (json.type === "3dplant") {
+            material.useSpecularOverAlpha = false;
         }
         
         return material;

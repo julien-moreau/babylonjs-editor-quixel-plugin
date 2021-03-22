@@ -38,6 +38,11 @@ export interface IQuixelPreferences {
      * Defines wether or not displacement texture should be used as parallax.
      */
     convertDisplacementToParallax: boolean;
+
+    /**
+     * Defines wether or not opacity should be merge to albedo's alpha channel.
+     */
+    mergeOpacityAlphaToAlbedo: boolean;
 }
 
 export const preferences: IQuixelPreferences = {
@@ -52,6 +57,8 @@ export const preferences: IQuixelPreferences = {
     automaticallyAddToScene: true,
     useOnlyAlbedoAsHigherQuality: false,
     convertDisplacementToParallax: false,
+
+    mergeOpacityAlphaToAlbedo: true,
 };
 
 /**
@@ -69,6 +76,8 @@ export const exportPreferences = () => ({
     automaticallyAddToScene: preferences.automaticallyAddToScene,
     useOnlyAlbedoAsHigherQuality: preferences.useOnlyAlbedoAsHigherQuality,
     convertDisplacementToParallax: preferences.convertDisplacementToParallax,
+
+    mergeOpacityAlphaToAlbedo: preferences.mergeOpacityAlphaToAlbedo,
 });
 
 /**
@@ -88,6 +97,8 @@ export const importPreferences = (config: any) => {
 
     preferences.useOnlyAlbedoAsHigherQuality = config.useOnlyAlbedoAsHigherQuality ?? false;
     preferences.convertDisplacementToParallax = config.convertDisplacementToParallax ?? false;
+
+    preferences.mergeOpacityAlphaToAlbedo = config.mergeOpacityAlphaToAlbedo ?? true;
 };
 
 export class QuixelPreferences {

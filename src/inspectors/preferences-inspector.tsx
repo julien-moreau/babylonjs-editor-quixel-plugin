@@ -16,8 +16,12 @@ export class QuixelPluginPreferencesInspector extends AbstractInspector<QuixelPr
             <>
                 <InspectorSection title="Common">
                     <InspectorBoolean object={preferences} property="automaticallyAddToScene" label="Add in scene instead of assets" />
+                </InspectorSection>
+
+                <InspectorSection title="Maps">
                     <InspectorBoolean object={preferences} property="useOnlyAlbedoAsHigherQuality" label="Use Only Albedo As Higher Quality" />
                     <InspectorBoolean object={preferences} property="convertDisplacementToParallax" label="Convert Displacement To Parallax" />
+                    <InspectorBoolean object={preferences} property="mergeOpacityAlphaToAlbedo" label="Merge Opacity In Albedo Alpha" />
                 </InspectorSection>
 
                 <InspectorSection title="Mesh">
