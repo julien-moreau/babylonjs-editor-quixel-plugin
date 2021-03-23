@@ -8,8 +8,8 @@ import { QuixelMeshInspector } from "./inspectors/lod-inspector";
 import { QuixelPBRMaterialInspector } from "./inspectors/pbr-inspector";
 import { QuixelPluginPreferencesInspector } from "./inspectors/preferences-inspector";
 
-import { QuixelListener } from "./quixel/listener";
 import { QuixelServer } from "./quixel/server";
+import { QuixelListener } from "./quixel/listener";
 import { exportPreferences, importPreferences } from "./quixel/preferences";
 
 /**
@@ -59,7 +59,10 @@ export const registerEditorPlugin = (editor: Editor): IPlugin => {
          * saves the project.
          */
         getWorkspacePreferences: () => {
-            return exportPreferences();
+            return {
+                ...exportPreferences(),
+                availableAssets: QuixelListener.ImportedAssets.map((a) => JSON.stringify(a)),
+            };
         },
 
         /**
@@ -69,6 +72,7 @@ export const registerEditorPlugin = (editor: Editor): IPlugin => {
          */
         setWorkspacePreferences: (preferences: any) => {
             importPreferences(preferences);
+            QuixelListener.ImportedAssets = preferences.availableAssets?.map((a) => JSON.parse(a)) ?? QuixelListener.ImportedAssets;
         },
     };
 }

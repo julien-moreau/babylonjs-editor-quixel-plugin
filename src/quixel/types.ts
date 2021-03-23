@@ -34,6 +34,21 @@ export interface IQuixelLOD {
     variation?: number;
 }
 
+export interface IQuixelMeta {
+    /**
+     * Defines the key of the meta data.
+     */
+    key: string;
+    /**
+     * Defines the displayable name of the metadata.
+     */
+    name: string;
+    /**
+     * Defines the value of the metadata.
+     */
+    value: string;
+}
+
 export interface IQuixelExport {
     /**
      * Defines the name of the exported asset.
@@ -63,4 +78,13 @@ export interface IQuixelExport {
      * Defines the list of all components of the asset (textures, etc.).
      */
     components: IQuixelComponent[];
+
+    /**
+     * Defines the path to the preview image.
+     */
+    previewImage: string;
+    /**
+     * Defines the list of all meta data available for the asset.
+     */
+    meta: IQuixelMeta[];
 }

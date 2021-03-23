@@ -6,7 +6,7 @@ import { Nullable } from "babylonjs-editor/shared/types";
 
 import {
     Mesh, VertexData, Geometry, Vector3, Space,
-    PBRMaterial, Texture, Quaternion,
+    PBRMaterial, Texture, Quaternion, Observable,
 } from "babylonjs";
 
 import { QuixelServer } from "./server";
@@ -38,12 +38,28 @@ export class QuixelListener {
     private static _Instance: Nullable<QuixelListener> = null;
 
     /**
+     * Defines the list of all imported assets.
+     */
+    public static ImportedAssets: IQuixelExport[] = [];
+
+    /**
      * Inits the listener used to compute Quixel Bridge commands.
      * @param editor defines the reference to the editor.
      */
     public static Init(editor: Editor): QuixelListener {
-        this._Instance ??= new QuixelListener(editor);
+        if (this._Instance) {
+            return this._Instance;
+        }
+
+        this._Instance = new QuixelListener(editor);
         return this._Instance;
+    }
+
+    /**
+     * Returns the instance of the listener.
+     */
+    public static GetInstance(): QuixelListener {
+        return this._Instance!;
     }
 
     private static _SupportedTexturesTypes: string[] = [
@@ -57,6 +73,12 @@ export class QuixelListener {
     private _queue: IQuixelExport[] = [];
 
     /**
+     * Defines the reference to the observable used to notify observers that a new quixel asset has
+     * been parsed and imported to the scene.
+     */
+    public onAssetImportedObservable: Observable<IQuixelExport> = new Observable<IQuixelExport>();
+
+    /**
      * Constructor.
      * @param editor defines the reference to the editor.
      */
@@ -64,14 +86,14 @@ export class QuixelListener {
         this._editor = editor;
 
         QuixelServer.OnExportedAssetObservable.add((e) => {
-            this._handleAssetExported(e);
+            this.importAssets(e);
         });
     }
 
     /**
      * Called on an assets has been exported from Quixel Bridge.
      */
-    private async _handleAssetExported(exports: IQuixelExport[]): Promise<void> {
+    public async importAssets(exports: IQuixelExport[], atPosition?: Vector3): Promise<void> {
         while (this._queue.length) {
             await Tools.Wait(150);
         }
@@ -93,7 +115,7 @@ export class QuixelListener {
 
         this._editor.console.logSection("Quixel: Handle export");
         this._editor.updateTaskFeedback(task, feedbackStep, "Quixel: Handling exports...");
-        await Promise.all(this._queue.map((q) => this._handleExport(q).then(() => {
+        await Promise.all(this._queue.map((q) => this._handleExport(q, atPosition).then(() => {
             this._editor.updateTaskFeedback(task, feedbackStep += step);
         })));
 
@@ -104,6 +126,16 @@ export class QuixelListener {
         // Refresh assets
         await this._editor.assets.refresh();
 
+        // Register and notify
+        this._queue.forEach((q) => {
+            const exists = QuixelListener.ImportedAssets.find((a) => a.id === q.id);
+            if (!exists) {
+                QuixelListener.ImportedAssets.push(q);
+            }
+
+            this.onAssetImportedObservable.notifyObservers(q);
+        });
+
         // Empty queue
         this._queue.splice(0, this._queue.length);
     }
@@ -112,7 +144,7 @@ export class QuixelListener {
      * Copies all the textures of the given quixel export.
      */
     private async _copyTextures(json: IQuixelExport): Promise<void> {
-        if (!Project.DirPath) {
+        if (!Project.DirPath || this._getExistingMaterial(json)) {
             return;
         }
 
@@ -181,14 +213,14 @@ export class QuixelListener {
     /**
      * Called to handle the given json export according to its type.
      */
-    private async _handleExport(json: IQuixelExport): Promise<void> {
+    private async _handleExport(json: IQuixelExport, atPosition?: Vector3): Promise<void> {
         // A material exists in any cases
         const displacement = json.components.find((c) => c.type === "displacement");
         const material = await this._createMaterial(json, displacement);
 
         switch (json.type) {
             case "3d":
-                await this._handle3dExport(json, material, displacement);
+                await this._handle3dExport(json, material, displacement, atPosition);
                 break;
 
             case "3dplant":
@@ -200,8 +232,8 @@ export class QuixelListener {
     /**
      * Handles exports of type "3d" (3d assets).
      */
-    private async _handle3dExport(json: IQuixelExport, material: PBRMaterial, displacement?: IQuixelComponent): Promise<void> {
-        const meshes = await this._createMeshes(json.name, json.lodList, displacement);
+    private async _handle3dExport(json: IQuixelExport, material: PBRMaterial, displacement?: IQuixelComponent, atPosition?: Vector3): Promise<void> {
+        const meshes = await this._createMeshes(json.name, json.lodList, displacement, atPosition);
         meshes.forEach((m) => m.material = material);
     }
 
@@ -232,7 +264,7 @@ export class QuixelListener {
     /**
      * Creates all the meshes including their LODs.
      */
-    private async _createMeshes(name: string, lodList: IQuixelLOD[], displacement?: IQuixelComponent): Promise<Mesh[]> {
+    private async _createMeshes(name: string, lodList: IQuixelLOD[], displacement?: IQuixelComponent, atPosition?: Vector3): Promise<Mesh[]> {
         const parsedMeshes: IParsedMesh[] = [];
 
         const promises = lodList.map(async (lod, lodIndex) => {
@@ -298,6 +330,7 @@ export class QuixelListener {
                 if (index === 0) {
                     m.mesh.name = name;
                     m.mesh.scaling.scale(preferences.objectScale);
+                    m.mesh.position.copyFrom(atPosition ?? Vector3.Zero());
 
                     if (preferences.checkCollisions && !preferences.checkColiisionsOnLowerLod) {
                         m.mesh.checkCollisions = true;
@@ -336,9 +369,26 @@ export class QuixelListener {
     }
 
     /**
+     * Returns the reference to the material in case it has been already imported in the scene.
+     */
+    private _getExistingMaterial(json: IQuixelExport): Nullable<PBRMaterial> {
+        const material = this._editor.scene!.materials.find((m) => m.metadata?.quixelMaterialId === json.id);
+        if (material && material instanceof PBRMaterial) {
+            return material;
+        }
+
+        return null;
+    }
+
+    /**
      * Creates the material acording to the given json configuration.
      */
     private async _createMaterial(json: IQuixelExport, displacement?: IQuixelComponent): Promise<PBRMaterial> {
+        const existingMaterial = this._getExistingMaterial(json);
+        if (existingMaterial) {
+            return existingMaterial;
+        }
+
         const material = new PBRMaterial(json.name, this._editor.scene!);
         material.invertNormalMapX = true;
         material.invertNormalMapY = true;
@@ -419,11 +469,12 @@ export class QuixelListener {
         await MetallicAmbientPacker.Pack(this._editor, material, material.metallicTexture as Texture, aoTexture);
 
         // Add metadata
+        material.metadata = { };
+        material.metadata.quixelMaterialId = json.id;
+
         if (json.type === "surface") {
-            material.metadata = {
-                isFromQuixel: true,
-                quixelDisplacement: displacement,
-            };
+            material.metadata.isFromQuixel = true;
+            material.metadata.quixelDisplacement = displacement;
         }
 
         // 3d plants
