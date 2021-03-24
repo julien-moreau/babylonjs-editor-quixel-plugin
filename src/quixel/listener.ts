@@ -86,14 +86,14 @@ export class QuixelListener {
         this._editor = editor;
 
         QuixelServer.OnExportedAssetObservable.add((e) => {
-            this.importAssets(e);
+            this.importAssets(e, preferences.automaticallyAddToScene ?? true);
         });
     }
 
     /**
      * Called on an assets has been exported from Quixel Bridge.
      */
-    public async importAssets(exports: IQuixelExport[], atPosition?: Vector3): Promise<void> {
+    public async importAssets(exports: IQuixelExport[], addToScene: boolean, atPosition?: Vector3): Promise<void> {
         while (this._queue.length) {
             await Tools.Wait(150);
         }
@@ -103,21 +103,23 @@ export class QuixelListener {
         // Add all exports to the queue
         exports.forEach((e) => this._queue.push(e));
 
-        // Copy textures
-        this._editor.updateTaskFeedback(task, 0, "Quixel: Copying textures...");
-        this._editor.console.logSection("Quixel: Copy textures");
-        await Promise.all(this._queue.map((q) => this._copyTextures(q)));
-        this._editor.updateTaskFeedback(task, 20);
+        if (addToScene) {
+            // Copy textures
+            this._editor.updateTaskFeedback(task, 0, "Quixel: Copying textures...");
+            this._editor.console.logSection("Quixel: Copy textures");
+            await Promise.all(this._queue.map((q) => this._copyTextures(q)));
+            this._editor.updateTaskFeedback(task, 20);
 
-        // Handle exports
-        const step = 80 / this._queue.length;
-        let feedbackStep = 20;
+            // Handle exports
+            const step = 80 / this._queue.length;
+            let feedbackStep = 20;
 
-        this._editor.console.logSection("Quixel: Handle export");
-        this._editor.updateTaskFeedback(task, feedbackStep, "Quixel: Handling exports...");
-        await Promise.all(this._queue.map((q) => this._handleExport(q, atPosition).then(() => {
-            this._editor.updateTaskFeedback(task, feedbackStep += step);
-        })));
+            this._editor.console.logSection("Quixel: Handle export");
+            this._editor.updateTaskFeedback(task, feedbackStep, "Quixel: Handling exports...");
+            await Promise.all(this._queue.map((q) => this._handleExport(q, atPosition).then(() => {
+                this._editor.updateTaskFeedback(task, feedbackStep += step);
+            })));
+        }
 
         // Notify done
         this._editor.updateTaskFeedback(task, 100, "Done!");
@@ -224,7 +226,7 @@ export class QuixelListener {
                 break;
 
             case "3dplant":
-                await this._hande3dPlantExport(json, material);
+                await this._hande3dPlantExport(json, material, displacement, atPosition);
                 break;
         }
     }
@@ -233,14 +235,14 @@ export class QuixelListener {
      * Handles exports of type "3d" (3d assets).
      */
     private async _handle3dExport(json: IQuixelExport, material: PBRMaterial, displacement?: IQuixelComponent, atPosition?: Vector3): Promise<void> {
-        const meshes = await this._createMeshes(json.name, json.lodList, displacement, atPosition);
-        meshes.forEach((m) => m.material = material);
+        const meshes = await this._createMeshes(json.name, json.id, json.lodList, displacement, atPosition);
+        meshes.forEach((m) => m instanceof Mesh && (m.material = material));
     }
 
     /**
      * Handles exports of type "3dplant" (3d plants).
      */
-    private async _hande3dPlantExport(json: IQuixelExport, material: PBRMaterial): Promise<void> {
+    private async _hande3dPlantExport(json: IQuixelExport, material: PBRMaterial, displacement?: IQuixelComponent, atPosition?: Vector3): Promise<void> {
         const variations: IQuixelLOD[][] = [];
         json.lodList.forEach((lod) => {
             if (lod.variation === undefined) {
@@ -255,19 +257,71 @@ export class QuixelListener {
             variations[index].push(lod);
         });
 
-        const variationsMeshes = await Promise.all(variations.map((v, index) => this._createMeshes(`${json.name}-var${index + 1}`, v)));
-        variationsMeshes.forEach((variationMeshes) => {
-            variationMeshes.forEach((m) => m.material = material);
-        });
+        const targetPosition = preferences.merge3dPlants ? undefined : atPosition;
+        const promises = variations.map((v, index) => this._createMeshes(`${json.name}-var${index + 1}`, json.id, v, displacement, targetPosition));
+        const variationsMeshes = await Promise.all(promises);
+
+        // Merge?
+        if (preferences.merge3dPlants) {
+            this._editor.console.logInfo(`Merging 3d plants named "${json.name}"`);
+
+            const meshesToMerge: Mesh[][] = [];
+            variationsMeshes.forEach((variation) => {
+                variation.forEach((m, meshIndex) => {
+                    if (!meshesToMerge[meshIndex]) { meshesToMerge.push([]); }
+                    meshesToMerge[meshIndex].push(m);
+                });
+            });
+
+            const mergedMeshes: Mesh[] = [];
+            meshesToMerge.forEach((mm, index) => {
+                const mesh = Mesh.MergeMeshes(mm, true, true, undefined, false, false);
+                if (!mesh) { return; }
+
+                if (index === 0) {
+                    mesh.position.copyFrom(atPosition ?? Vector3.Zero());
+                    mesh.metadata = {
+                        isFromQuixel: true,
+                        lodDistance: preferences.lodDistance,
+                        quixelMeshId: json.id,
+                    };
+
+                    this._editor.scene!.lights.forEach((l) => {
+                        l.getShadowGenerator()?.getShadowMap()?.renderList?.push(mesh);
+                    });
+                } else {
+                    mergedMeshes[0].addLODLevel(preferences.lodDistance * index, mesh);
+                }
+
+                mesh.id = Tools.RandomId();
+                mesh.isPickable = false;
+                mesh.receiveShadows = true;
+                mesh.checkCollisions = false;
+                mesh.material = material;
+
+                mergedMeshes.push(mesh);
+            });
+
+            this._editor.graph.refresh();
+        } else {
+            variationsMeshes.forEach((variationMeshes) => {
+                variationMeshes.forEach((m) => m.material = material);
+            });
+        }
     }
 
     /**
      * Creates all the meshes including their LODs.
      */
-    private async _createMeshes(name: string, lodList: IQuixelLOD[], displacement?: IQuixelComponent, atPosition?: Vector3): Promise<Mesh[]> {
+    private async _createMeshes(name: string, id: string, lodList: IQuixelLOD[], displacement?: IQuixelComponent, atPosition?: Vector3): Promise<Mesh[]> {
         const parsedMeshes: IParsedMesh[] = [];
-
         const promises = lodList.map(async (lod, lodIndex) => {
+            // Check existing
+            const existingMeshes = this._getExistingMeshes(id);
+            if (existingMeshes.length) {
+                // TODO: create instances
+            }
+
             const content = await readFile(lod.path);
             if (!FBXLoader.IsValidFBX(content)) {
                 return this._editor.console.logWarning(`Can't parse FBX file "${lod.lodObjectName}": not valid file.`);;
@@ -327,10 +381,13 @@ export class QuixelListener {
         // Configure meshes
         parsedMeshes.forEach((pm, pmIndex) => {
             pm.meshes.forEach((m, index) => {
+                m.mesh.metadata.quixelMeshLodName = lodList[pmIndex].lodObjectName;
+
                 if (index === 0) {
                     m.mesh.name = name;
                     m.mesh.scaling.scale(preferences.objectScale);
                     m.mesh.position.copyFrom(atPosition ?? Vector3.Zero());
+                    m.mesh.metadata.quixelMeshId = id;
 
                     if (preferences.checkCollisions && !preferences.checkColiisionsOnLowerLod) {
                         m.mesh.checkCollisions = true;
@@ -378,6 +435,13 @@ export class QuixelListener {
         }
 
         return null;
+    }
+
+    /**
+     * Returns the list of all existing meshes with the given id.
+     */
+    private _getExistingMeshes(id: string): Mesh[] {
+        return this._editor.scene!.meshes.filter((m) => m instanceof Mesh && m.metadata?.quixelMeshId === id) as Mesh[];
     }
 
     /**

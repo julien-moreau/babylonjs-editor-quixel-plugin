@@ -43,6 +43,11 @@ export interface IQuixelPreferences {
      * Defines wether or not opacity should be merge to albedo's alpha channel.
      */
     mergeOpacityAlphaToAlbedo: boolean;
+
+    /**
+     * Defines wether or not 3d plants should be merged together.
+     */
+    merge3dPlants: boolean;
 }
 
 export const preferences: IQuixelPreferences = {
@@ -59,6 +64,8 @@ export const preferences: IQuixelPreferences = {
     convertDisplacementToParallax: false,
 
     mergeOpacityAlphaToAlbedo: true,
+
+    merge3dPlants: true,
 };
 
 /**
@@ -78,6 +85,8 @@ export const exportPreferences = () => ({
     convertDisplacementToParallax: preferences.convertDisplacementToParallax,
 
     mergeOpacityAlphaToAlbedo: preferences.mergeOpacityAlphaToAlbedo,
+
+    merge3dPlants: preferences.merge3dPlants,
 });
 
 /**
@@ -99,6 +108,8 @@ export const importPreferences = (config: any) => {
     preferences.convertDisplacementToParallax = config.convertDisplacementToParallax ?? false;
 
     preferences.mergeOpacityAlphaToAlbedo = config.mergeOpacityAlphaToAlbedo ?? true;
+
+    preferences.merge3dPlants = config.merge3dPlants ?? true;
 };
 
 export class QuixelPreferences {

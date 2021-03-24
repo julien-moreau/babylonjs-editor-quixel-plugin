@@ -38,6 +38,10 @@ export class QuixelPluginPreferencesInspector extends AbstractInspector<QuixelPr
                 <InspectorSection title="LOD">
                     <InspectorNumber object={preferences} property="lodDistance" label="LOD Distance" min={5} step={0.01} />
                 </InspectorSection>
+
+                <InspectorSection title="3D Plants">
+                    <InspectorBoolean object={preferences} property="merge3dPlants" label="Merge 3D Plants" />
+                </InspectorSection>
             </>
         );
     }
