@@ -1,6 +1,9 @@
+import { join } from "path";
+
 import * as React from "react";
+
 import { PBRMaterial, Mesh } from "babylonjs";
-import { Editor, IPlugin, MaterialInspector } from "babylonjs-editor";
+import { Editor, IPlugin, MaterialInspector, IPluginConfiguration, Icon } from "babylonjs-editor";
 
 import { Toolbar } from "./toolbar";
 
@@ -16,7 +19,7 @@ import { exportPreferences, importPreferences } from "./quixel/preferences";
  * Registers the plugin by returning the IPlugin content.
  * @param editor defines the main reference to the editor.
  */
-export const registerEditorPlugin = (editor: Editor): IPlugin => {
+export const registerEditorPlugin = (editor: Editor, configuration: IPluginConfiguration): IPlugin => {
     QuixelServer.Connect();
     QuixelListener.Init(editor);
 
@@ -25,7 +28,7 @@ export const registerEditorPlugin = (editor: Editor): IPlugin => {
          * Defines the list of all toolbar elements to add when the plugin has been loaded.
          */
         toolbar: [
-            { buttonLabel: "Quixel", buttonIcon: "pin", content: <Toolbar editor={editor} /> }
+            { buttonLabel: "Quixel", buttonIcon: <Icon src={join(configuration.pluginAbsolutePath, "css/icon.png")} style={{ filter: "none" }} />, content: <Toolbar editor={editor} /> }
         ],
 
         /**
