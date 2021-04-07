@@ -5,7 +5,7 @@ import { Editor, Tools, Project, FilesStore, TextureAssets } from "babylonjs-edi
 import { Nullable } from "babylonjs-editor/shared/types";
 
 import {
-    Mesh, VertexData, Geometry, Vector3, Space,
+    Mesh, VertexData, Geometry, Vector3,
     PBRMaterial, Texture, Quaternion, Observable,
 } from "babylonjs";
 
@@ -236,7 +236,16 @@ export class QuixelListener {
      */
     private async _handle3dExport(json: IQuixelExport, material: PBRMaterial, displacement?: IQuixelComponent, atPosition?: Vector3): Promise<void> {
         const meshes = await this._createMeshes(json.name, json.id, json.lodList, displacement, atPosition);
-        meshes.forEach((m) => m instanceof Mesh && (m.material = material));
+        meshes.forEach((m) => {
+            if (m instanceof Mesh) {
+                m.material = material;
+
+                if (m.hasLODLevels) {
+                    m.scaling.setAll(preferences.objectScale);
+                    m.rotation.set(-Math.PI * 0.5, 0, 0);
+                }
+            }
+        });
     }
 
     /**
@@ -280,6 +289,9 @@ export class QuixelListener {
 
                 if (index === 0) {
                     mesh.position.copyFrom(atPosition ?? Vector3.Zero());
+                    mesh.scaling.setAll(preferences.objectScale);
+                    mesh.rotation.set(-Math.PI * 0.5, 0, 0);
+
                     mesh.metadata = {
                         isFromQuixel: true,
                         lodDistance: preferences.lodDistance,
@@ -305,7 +317,14 @@ export class QuixelListener {
             this._editor.graph.refresh();
         } else {
             variationsMeshes.forEach((variationMeshes) => {
-                variationMeshes.forEach((m) => m.material = material);
+                variationMeshes.forEach((m) => {
+                    m.material = material;
+
+                    if (m.hasLODLevels) {
+                        m.scaling.setAll(preferences.objectScale);
+                        m.rotation.set(-Math.PI * 0.5, 0, 0);
+                    }
+                });
             });
         }
     }
@@ -341,8 +360,6 @@ export class QuixelListener {
                 }
 
                 const mesh = new Mesh(lod.lodObjectName, this._editor.scene!);
-                mesh.scaling.setAll(preferences.objectScale);
-                mesh.rotate(new Vector3(1, 0, 0), -Math.PI * 0.5, Space.LOCAL);
                 mesh.id = Tools.RandomId();
                 mesh.isPickable = false;
                 mesh.receiveShadows = true;
@@ -385,7 +402,6 @@ export class QuixelListener {
 
                 if (index === 0) {
                     m.mesh.name = name;
-                    m.mesh.scaling.scale(preferences.objectScale);
                     m.mesh.position.copyFrom(atPosition ?? Vector3.Zero());
                     m.mesh.metadata.quixelMeshId = id;
 
