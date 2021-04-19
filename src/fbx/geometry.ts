@@ -11,10 +11,11 @@ export interface IFBXParsedData {
 }
 
 export interface IFBXBuffers {
-    vertex: number[],
-    index: number[],
-    normal: number[],
-    uvs: number[],
+    vertex: number[];
+    index: number[];
+    normal: number[];
+    uvs: number[];
+    colors: number[];
 }
 
 export interface IFBXGeometryInformations {
@@ -22,6 +23,7 @@ export interface IFBXGeometryInformations {
     vertexIndices: number[];
     normal: Nullable<IFBXParsedData>;
     uv: Nullable<IFBXParsedData>;
+    colors: Nullable<IFBXParsedData>;
 }
 
 export class FBXGeometry {
@@ -61,6 +63,7 @@ export class FBXGeometry {
             vertexIndices: geoNode.PolygonVertexIndex?.a ?? [],
             normal: this._parseNormals(geoNode.LayerElementNormal),
             uv: this._parseUVs(geoNode.LayerElementUV),
+            colors: this._parseColors(geoNode.LayerElementColor),
         };
 
         const buffers = this._genBuffers(geo);
@@ -70,6 +73,7 @@ export class FBXGeometry {
             indices: buffers.index,
             normals: buffers.normal,
             uvs: buffers.uvs,
+            colors: buffers.colors,
         };
     }
 
@@ -82,6 +86,7 @@ export class FBXGeometry {
             index: [],
             normal: [],
             uvs: [],
+            colors: [],
         };
 
         let polygonIndex = 0;
@@ -91,9 +96,9 @@ export class FBXGeometry {
         let facePositionIndexes: number[] = [];
         let faceNormals: number[] = [];
         let faceUVs: number[] = [];
+        let faceColors: number[] = [];
 
         geoInfo.vertexIndices.forEach((vertexIndex, polygonVertexIndex) => {
-
             let endOfFace = false;
 
             // Face index and vertex index arrays are combined in a single array
@@ -122,10 +127,15 @@ export class FBXGeometry {
                 faceUVs.push(data[1]);
             }
 
+            if (geoInfo.colors) {
+                var data = this._getData(polygonVertexIndex, polygonIndex, vertexIndex, geoInfo.colors);
+                faceColors.push(data[0], data[1], data[2], data[3] ?? 1.0);
+            }
+
             faceLength++;
             
             if (endOfFace) {
-                this._genFace(buffers, geoInfo, facePositionIndexes, faceNormals, faceUVs, faceLength);
+                this._genFace(buffers, geoInfo, facePositionIndexes, faceNormals, faceUVs, faceColors, faceLength);
                 
                 polygonIndex++;
                 faceLength = 0;
@@ -134,6 +144,7 @@ export class FBXGeometry {
                 facePositionIndexes = [];
                 faceNormals = [];
                 faceUVs = [];
+                faceColors = [];
             }
         });
 
@@ -143,8 +154,9 @@ export class FBXGeometry {
     /**
      * Generates the face and populates the "buffers" object.
      */
-    private _genFace(buffers: IFBXBuffers, geoInfo: IFBXGeometryInformations, facePositionIndexes: number[], faceNormals: number[], faceUVs: number[], faceLength: number): void {
+    private _genFace(buffers: IFBXBuffers, geoInfo: IFBXGeometryInformations, facePositionIndexes: number[], faceNormals: number[], faceUVs: number[], faceColors: number[], faceLength: number): void {
         for (var i = 2; i < faceLength; i++) {
+            // Positions
             buffers.vertex.push(geoInfo.vertexPositions[facePositionIndexes[0]]);
             buffers.vertex.push(geoInfo.vertexPositions[facePositionIndexes[2]]);
             buffers.vertex.push(geoInfo.vertexPositions[facePositionIndexes[1]]);
@@ -157,6 +169,25 @@ export class FBXGeometry {
             buffers.vertex.push(geoInfo.vertexPositions[facePositionIndexes[i * 3 + 2]]);
             buffers.vertex.push(geoInfo.vertexPositions[facePositionIndexes[i * 3 + 1]]);
 
+            // Colors
+            if (geoInfo.colors) {
+                buffers.colors.push(faceColors[0]);
+                buffers.colors.push(faceColors[1]);
+                buffers.colors.push(faceColors[2]);
+                buffers.colors.push(faceColors[3]);
+
+                buffers.colors.push(faceColors[(i - 1 ) * 3]);
+                buffers.colors.push(faceColors[(i - 1 ) * 3 + 1]);
+                buffers.colors.push(faceColors[(i - 1 ) * 3 + 2]);
+                buffers.colors.push(faceColors[(i - 1 ) * 3 + 3]);
+
+                buffers.colors.push(faceColors[i * 3]);
+                buffers.colors.push(faceColors[i * 3 + 1]);
+                buffers.colors.push(faceColors[i * 3 + 2]);
+                buffers.colors.push(faceColors[i * 3 + 3]);
+            }
+
+            // Index
             buffers.index.push(buffers.index.length);
             buffers.index.push(buffers.index.length);
             buffers.index.push(buffers.index.length);
@@ -213,7 +244,7 @@ export class FBXGeometry {
             buffer: buffer,
             indices: indexBuffer,
             mappingType: mappingType,
-            referenceType: referenceType
+            referenceType: referenceType,
         };
     }
 
@@ -223,9 +254,10 @@ export class FBXGeometry {
     private _parseUVs(uvNode: any): Nullable<IFBXParsedData> {
         if (!uvNode) { return null; }
 
-        var mappingType = uvNode.MappingInformationType;
+        const mappingType = uvNode.MappingInformationType;
         const referenceType = uvNode.ReferenceInformationType;
         const buffer = uvNode.UV.a;
+
         let indexBuffer = [];
         if (referenceType === "IndexToDirect") {
             indexBuffer = uvNode.UVIndex.a;
@@ -236,7 +268,31 @@ export class FBXGeometry {
             buffer: buffer,
             indices: indexBuffer,
             mappingType: mappingType,
-            referenceType: referenceType
+            referenceType: referenceType,
+        };
+    }
+
+    /**
+     * Parses the colors of the given color node.
+     */
+    private _parseColors(colorNode: any): Nullable<IFBXParsedData> {
+        if (!colorNode) { return null; }
+
+        const mappingType = colorNode.MappingInformationType;
+        const referenceType = colorNode.ReferenceInformationType;
+        const buffer = colorNode.Colors.a;
+
+        let indexBuffer = [];
+        if ( referenceType === 'IndexToDirect' ) {
+            indexBuffer = colorNode.ColorIndex.a;
+        }
+
+        return {
+            dataSize: 4,
+            buffer: buffer,
+            indices: indexBuffer,
+            mappingType: mappingType,
+            referenceType: referenceType,
         };
     }
 
@@ -247,13 +303,14 @@ export class FBXGeometry {
         let index: number = polygonVertexIndex;
 
         switch (infoObject.mappingType) {
-            case 'ByPolygon': index = polygonIndex; break;
-            case 'ByVertice': index = vertexIndex; break;
-            case 'AllSame': index = infoObject.indices[0]; break;
+            case "ByPolygonVertex": index = polygonVertexIndex; break;
+            case "ByPolygon": index = polygonIndex; break;
+            case "ByVertice": index = vertexIndex; break;
+            case "AllSame": index = infoObject.indices[0]; break;
             default: break;
         }
 
-        if (infoObject.referenceType === 'IndexToDirect') {
+        if (infoObject.referenceType === "IndexToDirect") {
             index = infoObject.indices[index];
         }
 

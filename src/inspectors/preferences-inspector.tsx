@@ -41,6 +41,7 @@ export class QuixelPluginPreferencesInspector extends AbstractInspector<QuixelPr
 
                 <InspectorSection title="3D Plants">
                     <InspectorBoolean object={preferences} property="merge3dPlants" label="Merge 3D Plants" />
+                    <InspectorBoolean object={preferences} property="use3dPlantsNodeMaterial" label="Use Dedicated Node Material" />
                 </InspectorSection>
             </>
         );

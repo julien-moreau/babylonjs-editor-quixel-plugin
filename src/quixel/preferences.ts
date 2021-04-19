@@ -48,6 +48,10 @@ export interface IQuixelPreferences {
      * Defines wether or not 3d plants should be merged together.
      */
     merge3dPlants: boolean;
+    /**
+     * Defines wether or not the node material (used to simulate wind etc. should be used).
+     */
+    use3dPlantsNodeMaterial: boolean;
 }
 
 export const preferences: IQuixelPreferences = {
@@ -66,6 +70,7 @@ export const preferences: IQuixelPreferences = {
     mergeOpacityAlphaToAlbedo: true,
 
     merge3dPlants: true,
+    use3dPlantsNodeMaterial: false,
 };
 
 /**
@@ -87,6 +92,7 @@ export const exportPreferences = () => ({
     mergeOpacityAlphaToAlbedo: preferences.mergeOpacityAlphaToAlbedo,
 
     merge3dPlants: preferences.merge3dPlants,
+    use3dPlantsNodeMaterial: preferences.use3dPlantsNodeMaterial,
 });
 
 /**
@@ -110,6 +116,7 @@ export const importPreferences = (config: any) => {
     preferences.mergeOpacityAlphaToAlbedo = config.mergeOpacityAlphaToAlbedo ?? true;
 
     preferences.merge3dPlants = config.merge3dPlants ?? true;
+    preferences.use3dPlantsNodeMaterial = config.use3dPlantsNodeMaterial ?? false;
 };
 
 export class QuixelPreferences {

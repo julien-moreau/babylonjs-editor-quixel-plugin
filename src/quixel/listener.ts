@@ -1,4 +1,4 @@
-import { extname, join } from "path";
+import { basename, extname, join } from "path";
 import { copyFile, readFile, writeFile } from "fs-extra";
 
 import { Editor, Tools, Project, FilesStore, TextureAssets } from "babylonjs-editor";
@@ -7,6 +7,7 @@ import { Nullable } from "babylonjs-editor/shared/types";
 import {
     Mesh, VertexData, Geometry, Vector3,
     PBRMaterial, Texture, Quaternion, Observable,
+    NodeMaterial, CopyTools, BaseTexture,
 } from "babylonjs";
 
 import { QuixelServer } from "./server";
@@ -16,6 +17,8 @@ import { preferences } from "./preferences";
 import { FBXLoader } from "../fbx/loader";
 
 import { TextureUtils } from "../tools/textureMerger";
+
+import plantMaterialJson from "./materials/plants.json";
 
 import { AlbedoOpacityPacker } from "./packers/albedo-opacity";
 import { MetallicAmbientPacker } from "./packers/metallic-ambient";
@@ -270,6 +273,39 @@ export class QuixelListener {
         const promises = variations.map((v, index) => this._createMeshes(`${json.name}-var${index + 1}`, json.id, v, displacement, targetPosition));
         const variationsMeshes = await Promise.all(promises);
 
+        // Material
+        let effectiveMaterial = material;
+        if (preferences.use3dPlantsNodeMaterial) {
+            const nodeMaterial = NodeMaterial.Parse(plantMaterialJson, this._editor.scene!, undefined!);
+            nodeMaterial.id = material.id;
+            nodeMaterial.name = material.name;
+            nodeMaterial.build(false);
+
+            for (const block of nodeMaterial.getTextureBlocks()) {
+                let texture: Nullable<BaseTexture> = null;
+
+                switch (block.name) {
+                    case "Albedo Texture": texture = material.albedoTexture; break;
+                    case "Roughness Texture": texture = material.metallicTexture; break;
+                    case "Bump Texture": texture = material.bumpTexture; break;
+                    case "Translucency Texture": texture = material.subSurface.thicknessTexture; break;
+                }
+
+                if (!texture || !(texture instanceof Texture)) {
+                    continue;
+                }
+
+                const serializationData = texture.serialize();
+                // serializationData.name = basename(texture.name);
+                serializationData.name = CopyTools.GenerateBase64StringFromTexture(texture);
+                serializationData.url = basename(texture.name);
+
+                block.texture = Texture.Parse(serializationData, this._editor.scene!, "") as Texture;
+            }
+
+            material.dispose(true, true);
+        }
+
         // Merge?
         if (preferences.merge3dPlants) {
             this._editor.console.logInfo(`Merging 3d plants named "${json.name}"`);
@@ -309,7 +345,7 @@ export class QuixelListener {
                 mesh.isPickable = false;
                 mesh.receiveShadows = true;
                 mesh.checkCollisions = false;
-                mesh.material = material;
+                mesh.material = effectiveMaterial;
 
                 mergedMeshes.push(mesh);
             });
@@ -318,7 +354,7 @@ export class QuixelListener {
         } else {
             variationsMeshes.forEach((variationMeshes) => {
                 variationMeshes.forEach((m) => {
-                    m.material = material;
+                    m.material = effectiveMaterial;
 
                     if (m.hasLODLevels) {
                         m.scaling.setAll(preferences.objectScale);
@@ -374,6 +410,7 @@ export class QuixelListener {
                 vertexData.indices = g.indices ?? null;
                 vertexData.normals = g.normals ?? [];
                 vertexData.uvs = g.uvs ?? [];
+                // vertexData.colors = g.colors?.length ? g.colors : null;
 
                 const geometry = new Geometry(Tools.RandomId(), this._editor.scene!, vertexData, true);
                 geometry.applyToMesh(mesh);

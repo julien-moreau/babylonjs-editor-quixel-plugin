@@ -1,3 +1,5 @@
+import { Nullable } from "babylonjs-editor/shared/types";
+
 export interface IFBXNode {
     id?: string;
     name?: string;
@@ -15,6 +17,7 @@ export interface IFBXGeometry {
 
     normals?: number[];
     uvs?: number[];
+    colors?: Nullable<number[]>;
 }
 
 export type IFBXConnections = number[][];
