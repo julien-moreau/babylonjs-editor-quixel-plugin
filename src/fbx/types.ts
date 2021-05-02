@@ -11,6 +11,14 @@ export interface IFBXNode {
     a?: any;
 }
 
+export interface IFBXBone {
+    id: number;
+    name: string;
+    indices: number[];
+    weights: number[];
+    transformLink: number[];
+}
+
 export interface IFBXGeometry {
     positions: number[];
     indices?: number[];
@@ -18,6 +26,14 @@ export interface IFBXGeometry {
     normals?: number[];
     uvs?: number[];
     colors?: Nullable<number[]>;
+
+    bones?: Nullable<IFBXBone[]>;
+    weights?: Nullable<number[]>;
+    weightsIndices?: Nullable<number[]>;
+}
+
+export interface IFBXDeformer {
+
 }
 
 export type IFBXConnections = number[][];

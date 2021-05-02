@@ -26,28 +26,32 @@ export interface IFBXGeometryInformations {
     colors: Nullable<IFBXParsedData>;
 }
 
+export interface IParseOptions {
+    geometry: IStringDictionary<IFBXNode>;
+    connections: IFBXConnections;
+}
+
 export class FBXGeometry {
     /**
      * Parses the given Geometry node.
-     * @param geoNode defines the "Geometry" object from the FBX file.
-     * @param connections defines the reference to the connections of FBX nodes. Mainly used to keep orders of exports.
+     * @param options defines the parsing options containing the need geometry, skinnin, connections etc. informations.
      */
-    public parse(geoNode: IStringDictionary<IFBXNode>, connections: IFBXConnections): IFBXGeometry[] {
-        return this._recursivelyParse(geoNode, [], connections);
+    public parse(options: IParseOptions): IFBXGeometry[] {
+        return this._recursivelyParse(options.geometry, [], options);
     }
 
     /**
      * Recursively parses the geometries taking according to the given root geometry.
      */
-    private _recursivelyParse(rootNode: IStringDictionary<IFBXNode>, geometries: IFBXGeometry[], connections: IFBXConnections): IFBXGeometry[] {
-        geometries.push(this._genGeomeetry(rootNode));
+    private _recursivelyParse(rootGeometryNode: IStringDictionary<IFBXNode>, geometries: IFBXGeometry[], options: IParseOptions): IFBXGeometry[] {
+        geometries.push(this._genGeomeetry(rootGeometryNode));
 
-        connections.forEach((c) => {
+        options.connections.forEach((c) => {
             const id = c[0].toString();
-            const value = rootNode[id] as IStringDictionary<IFBXNode>;
+            const value = rootGeometryNode[id] as IStringDictionary<IFBXNode>;
 
             if (value?.name === "Geometry") {
-                this._recursivelyParse(value, geometries, connections);
+                this._recursivelyParse(value, geometries, options);
             }
         });
 
@@ -60,20 +64,20 @@ export class FBXGeometry {
     private _genGeomeetry(geoNode: IStringDictionary<IFBXNode>): IFBXGeometry {
         const geo: IFBXGeometryInformations = {
             vertexPositions: geoNode.Vertices?.a ?? [],
-            vertexIndices: geoNode.PolygonVertexIndex?.a ?? [],
-            normal: this._parseNormals(geoNode.LayerElementNormal),
             uv: this._parseUVs(geoNode.LayerElementUV),
+            vertexIndices: geoNode.PolygonVertexIndex?.a ?? [],
             colors: this._parseColors(geoNode.LayerElementColor),
+            normal: this._parseNormals(geoNode.LayerElementNormal),
         };
 
         const buffers = this._genBuffers(geo);
 
         return {
-            positions: buffers.vertex,
-            indices: buffers.index,
-            normals: buffers.normal,
             uvs: buffers.uvs,
+            indices: buffers.index,
             colors: buffers.colors,
+            normals: buffers.normal,
+            positions: buffers.vertex,
         };
     }
 
@@ -82,21 +86,21 @@ export class FBXGeometry {
      */
     private _genBuffers(geoInfo: IFBXGeometryInformations): IFBXBuffers {
         const buffers: IFBXBuffers = {
-            vertex: [],
-            index: [],
-            normal: [],
             uvs: [],
+            index: [],
+            vertex: [],
             colors: [],
+            normal: [],
         };
 
         let polygonIndex = 0;
         let faceLength = 0;
 
         // these will hold data for a single face
-        let facePositionIndexes: number[] = [];
-        let faceNormals: number[] = [];
         let faceUVs: number[] = [];
         let faceColors: number[] = [];
+        let faceNormals: number[] = [];
+        let facePositionIndexes: number[] = [];
 
         geoInfo.vertexIndices.forEach((vertexIndex, polygonVertexIndex) => {
             let endOfFace = false;
@@ -133,18 +137,18 @@ export class FBXGeometry {
             }
 
             faceLength++;
-            
+
             if (endOfFace) {
                 this._genFace(buffers, geoInfo, facePositionIndexes, faceNormals, faceUVs, faceColors, faceLength);
-                
+
                 polygonIndex++;
                 faceLength = 0;
 
                 // reset arrays for the next face
-                facePositionIndexes = [];
-                faceNormals = [];
                 faceUVs = [];
                 faceColors = [];
+                faceNormals = [];
+                facePositionIndexes = [];
             }
         });
 
@@ -176,10 +180,10 @@ export class FBXGeometry {
                 buffers.colors.push(faceColors[2]);
                 buffers.colors.push(faceColors[3]);
 
-                buffers.colors.push(faceColors[(i - 1 ) * 3]);
-                buffers.colors.push(faceColors[(i - 1 ) * 3 + 1]);
-                buffers.colors.push(faceColors[(i - 1 ) * 3 + 2]);
-                buffers.colors.push(faceColors[(i - 1 ) * 3 + 3]);
+                buffers.colors.push(faceColors[(i - 1) * 3]);
+                buffers.colors.push(faceColors[(i - 1) * 3 + 1]);
+                buffers.colors.push(faceColors[(i - 1) * 3 + 2]);
+                buffers.colors.push(faceColors[(i - 1) * 3 + 3]);
 
                 buffers.colors.push(faceColors[i * 3]);
                 buffers.colors.push(faceColors[i * 3 + 1]);
@@ -283,7 +287,7 @@ export class FBXGeometry {
         const buffer = colorNode.Colors.a;
 
         let indexBuffer = [];
-        if ( referenceType === 'IndexToDirect' ) {
+        if (referenceType === "IndexToDirect") {
             indexBuffer = colorNode.ColorIndex.a;
         }
 

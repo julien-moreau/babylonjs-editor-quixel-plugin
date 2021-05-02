@@ -11,6 +11,11 @@ export interface IQuixelComponent {
      * Defines the absolute path of the component's file.
      */
     path: string;
+
+    /**
+     * Defines the list of all texture sets for the component.
+     */
+    textureSets?: string[];
 }
 
 export interface IQuixelLOD {
@@ -32,6 +37,13 @@ export interface IQuixelLOD {
      * Defines the variation id of the lod.
      */
     variation?: number;
+}
+
+export interface IQuixelMaterial {
+    opacityType: string;
+    materialName: string;
+    materialId: number;
+    textureSets: string[];
 }
 
 export interface IQuixelMeta {
@@ -78,6 +90,11 @@ export interface IQuixelExport {
      * Defines the list of all components of the asset (textures, etc.).
      */
     components: IQuixelComponent[];
+    /**
+     * Defines the list of all materials available for the mesh.
+     * If materials.length equals 0, only single material.
+     */
+    materials: IQuixelMaterial[];
 
     /**
      * Defines the path to the preview image.

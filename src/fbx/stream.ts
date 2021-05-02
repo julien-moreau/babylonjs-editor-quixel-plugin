@@ -103,6 +103,16 @@ export class FBXStream {
     }
 
     /**
+     * Reads and returns a 16 bits integer.
+     */
+    public readInt16(): number {
+        const value = this._buffer.readInt16LE(this._pos);
+        this._pos += 2;
+
+        return value;
+    }
+
+    /**
      * Reads and returns a 64 bits integer.
      */
     public readInt64(): number {
