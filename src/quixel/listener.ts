@@ -1,20 +1,17 @@
-import { basename, extname, join } from "path";
-import { copyFile, readFile, writeFile } from "fs-extra";
+import { basename, dirname, extname, join } from "path";
+import { copyFile, writeFile, writeJSON } from "fs-extra";
 
-import { Editor, Tools, Project, FilesStore, TextureAssets } from "babylonjs-editor";
+import { Editor, Tools, Project, FSTools, MeshExporter } from "babylonjs-editor";
 import { Nullable } from "babylonjs-editor/shared/types";
 
 import {
-    Mesh, VertexData, Geometry, Vector3,
-    PBRMaterial, Texture, Quaternion, Observable,
+    Mesh, Vector3, SceneLoader, PBRMaterial, Texture, Quaternion, Observable,
     NodeMaterial, CopyTools, BaseTexture, Material,
 } from "babylonjs";
 
 import { QuixelServer } from "./server";
 import { IQuixelComponent, IQuixelExport, IQuixelLOD } from "./types";
 import { preferences } from "./preferences";
-
-import { FBXLoader } from "../fbx/loader";
 
 import { TextureUtils } from "../tools/textureMerger";
 
@@ -112,6 +109,10 @@ export class QuixelListener {
             await Tools.Wait(150);
         }
 
+        // Check quixel folder
+        await FSTools.CreateDirectory(join(this._editor.assetsBrowser.assetsDirectory, "quixel"));
+
+        // Add task
         const task = this._editor.addTaskFeedback(0, "");
 
         // Add all exports to the queue
@@ -121,6 +122,7 @@ export class QuixelListener {
             // Copy textures
             this._editor.updateTaskFeedback(task, 0, "Quixel: Copying textures...");
             this._editor.console.logSection("Quixel: Copy textures");
+            await Promise.all(this._queue.map((q) => this._createAssetsDirectories(q)));
             await Promise.all(this._queue.map((q) => this._copyTextures(q)));
             this._editor.updateTaskFeedback(task, 20);
 
@@ -140,6 +142,7 @@ export class QuixelListener {
         this._editor.closeTaskFeedback(task, 1000);
 
         // Refresh assets
+        await this._editor.assetsBrowser.refresh();
         await this._editor.assets.refresh();
 
         // Register and notify
@@ -157,12 +160,31 @@ export class QuixelListener {
     }
 
     /**
+     * Creates the needed asset's directories.
+     */
+    private async _createAssetsDirectories(json: IQuixelExport): Promise<void> {
+        const rootFolder = `quixel/${json.type}`;
+
+        await FSTools.CreateDirectory(join(this._editor.assetsBrowser.assetsDirectory, rootFolder));
+        await FSTools.CreateDirectory(join(this._editor.assetsBrowser.assetsDirectory, rootFolder, basename(json.path)));
+    }
+
+    /**
+     * Returns the root directory of the asset.
+     */
+    private _getRootDirectory(json: IQuixelExport): string {
+        return join(this._editor.assetsBrowser.assetsDirectory, `quixel/${json.type}`, basename(json.path));
+    }
+
+    /**
      * Copies all the textures of the given quixel export.
      */
     private async _copyTextures(json: IQuixelExport): Promise<void> {
         if (!Project.DirPath || this._getExistingMaterial(json)) {
             return;
         }
+
+        const rootFolder = this._getRootDirectory(json);
 
         const components = json.components.filter((c) => QuixelListener._SupportedTexturesTypes.indexOf(c.type) !== -1);
         const promises = components.map(async (c) => {
@@ -183,10 +205,8 @@ export class QuixelListener {
 
             // Simply copy?
             if (simpleCopy) {
-                const path = join(Project.DirPath!, "files", c.name);
-
+                const path = join(rootFolder, c.name);
                 await copyFile(c.path, path);
-                FilesStore.AddFile(path);
 
                 return this._editor.console.logInfo(`Copied texture "${c.name}" at ${path}`);
             }
@@ -211,10 +231,8 @@ export class QuixelListener {
                     const replacedName = c.name.replace(extname(c.name), ".png");
                     c.name = replacedName;
 
-                    const path = join(Project.DirPath!, "files", replacedName);
-
+                    const path = join(rootFolder, replacedName);
                     await writeFile(path, Buffer.from(await Tools.ReadFileAsArrayBuffer(resizedTextureBlob)));
-                    FilesStore.AddFile(path);
 
                     this._editor.console.logInfo(`Copied resized texture "${c.name}" at ${path}`);
                 }
@@ -263,17 +281,11 @@ export class QuixelListener {
      * Handles exports of type "3d" (3d assets).
      */
     private async _handle3dExport(json: IQuixelExport, materials: PBRMaterial[], displacement?: IQuixelComponent, atPosition?: Vector3): Promise<void> {
-        const meshes = await this._createMeshes(json.name, json.id, json.lodList, displacement, atPosition);
+        const meshes = await this._createMeshes(json, json.name, json.id, json.lodList, displacement, atPosition);
         meshes.forEach((m) => {
             if (m instanceof Mesh) {
-                m.material = materials[m.metadata.materialId] ?? materials[0];
-
-                if (m.material) {
-                    m.name = m.material.name;
-                }
-
                 m.scaling.setAll(preferences.objectScale);
-                m.rotation.set(-Math.PI * 0.5, 0, 0);
+                m.material = materials[m.metadata.materialId] ?? materials[0];
             }
         });
     }
@@ -297,7 +309,7 @@ export class QuixelListener {
         });
 
         const targetPosition = preferences.merge3dPlants ? undefined : atPosition;
-        const promises = variations.map((v, index) => this._createMeshes(`${json.name}-var${index + 1}`, json.id, v, displacement, targetPosition));
+        const promises = variations.map((v, index) => this._createMeshes(json, `${json.name}-var${index + 1}`, json.id, v, displacement, targetPosition));
         const variationsMeshes = await Promise.all(promises);
 
         // Material
@@ -331,6 +343,20 @@ export class QuixelListener {
 
                 effectiveMaterial = nodeMaterial;
             }
+            
+            // Add editor path
+            const rootFolder = this._getRootDirectory(json);
+            const materialJsonPath = join(rootFolder, `${nodeMaterial.name}.material`);
+
+            nodeMaterial.metadata = material.metadata;
+
+            await writeJSON(materialJsonPath, {
+                ...nodeMaterial.serialize(),
+                metadata: nodeMaterial.metadata,
+            }, {
+                spaces: "\t",
+                encoding: "utf-8",
+            });
 
             material.dispose(true, true);
         }
@@ -355,7 +381,6 @@ export class QuixelListener {
                 if (index === 0) {
                     mesh.position.copyFrom(atPosition ?? Vector3.Zero());
                     mesh.scaling.setAll(preferences.objectScale);
-                    mesh.rotation.set(-Math.PI * 0.5, 0, 0);
 
                     mesh.metadata = {
                         isFromQuixel: true,
@@ -397,7 +422,7 @@ export class QuixelListener {
     /**
      * Creates all the meshes including their LODs.
      */
-    private async _createMeshes(name: string, id: string, lodList: IQuixelLOD[], displacement?: IQuixelComponent, atPosition?: Vector3): Promise<Mesh[]> {
+    private async _createMeshes(json: IQuixelExport, name: string, id: string, lodList: IQuixelLOD[], displacement?: IQuixelComponent, atPosition?: Vector3): Promise<Mesh[]> {
         const parsedMeshes: IParsedMesh[] = [];
         const promises = lodList.map(async (lod, lodIndex) => {
             // Check existing
@@ -406,49 +431,30 @@ export class QuixelListener {
                 // TODO: create instances
             }
 
-            const content = await readFile(lod.path);
-            if (!FBXLoader.IsValidFBX(content)) {
-                return this._editor.console.logWarning(`Can't parse FBX file "${lod.lodObjectName}": not valid file.`);;
-            }
+            const path = lod.path.replace(/\\/g, "/");
+            const result = await SceneLoader.ImportMeshAsync("", join(dirname(path), "/"), basename(path), this._editor.scene!);
 
-            const loader = new FBXLoader(content);
-            const geometries = loader.parse();
-
-            if (!geometries?.length) {
-                return this._editor.console.logWarning(`Mesh "${lod.lodObjectName}" has no geometry. Skipping.`);
-            }
-
-            geometries.forEach((g, geometryIndex) => {
-                let variation = parsedMeshes.find((pm) => pm.index === geometryIndex);
+            result.meshes.forEach((m, index) => {
+                let variation = parsedMeshes.find((pm) => pm.index === index);
                 if (!variation) {
-                    parsedMeshes.push(variation = { index: geometryIndex, meshes: [] });
+                    parsedMeshes.push(variation = { index: index, meshes: [] });
                 }
 
-                const mesh = new Mesh(lod.lodObjectName, this._editor.scene!);
-                mesh.id = Tools.RandomId();
-                mesh.isPickable = false;
-                mesh.receiveShadows = true;
-                mesh.checkCollisions = false;
-                mesh.metadata = {
+                m.isPickable = false;
+                m.receiveShadows = true;
+                m.id = Tools.RandomId();
+                m.checkCollisions = false;
+                m.metadata = {
                     isFromQuixel: true,
                     lodDistance: preferences.lodDistance,
                 };
 
-                const vertexData = new VertexData();
-                vertexData.positions = g.positions;
-                vertexData.indices = g.indices ?? null;
-                vertexData.normals = g.normals ?? [];
-                vertexData.uvs = g.uvs ?? [];
-                
-                // vertexData.colors = g.colors?.length ? g.colors : null;
+                variation.meshes.push({
+                    index: lodIndex,
+                    mesh: m as Mesh,
+                });
 
-                const geometry = new Geometry(Tools.RandomId(), this._editor.scene!, vertexData, true);
-                geometry.applyToMesh(mesh);
-
-                // Apply displacement
-                console.log("Displacement not yet available, skipping: ", displacement);
-
-                variation.meshes.push({ index: lodIndex, mesh });
+                console.log("Quixel Babylon.JS Editor Plugin: displacement ignored: ", displacement);
 
                 this._editor.console.logInfo(`Created mesh "${lod.lodObjectName}"`);
             });
@@ -468,7 +474,6 @@ export class QuixelListener {
                 m.mesh.metadata.quixelMeshLodName = lodList[pmIndex]?.lodObjectName ?? m.mesh.name;
 
                 if (index === 0) {
-                    m.mesh.name = name;
                     m.mesh.position.copyFrom(atPosition ?? Vector3.Zero());
                     m.mesh.metadata.quixelMeshId = id;
                     m.mesh.metadata.materialId = pmIndex;
@@ -506,6 +511,16 @@ export class QuixelListener {
             pm.meshes.forEach((m) => result.push((m.mesh)));
         });
 
+        // Write .babylon file
+        if (result.length) {
+            const rootUrl = this._getRootDirectory(json);
+            const serializedMesh = MeshExporter.ExportMesh(result[0], false, false);
+
+            await writeJSON(join(rootUrl, `${name}.babylon`), serializedMesh, {
+                encoding: "utf-8",
+            });
+        }
+
         return result;
     }
 
@@ -539,6 +554,8 @@ export class QuixelListener {
             return existingMaterial;
         }
 
+        const rootFolder = this._getRootDirectory(json);
+
         const name = `${json.name}-${(options.textureSets ?? []).join("-")}`;
 
         const material = new PBRMaterial(name, this._editor.scene!);
@@ -546,11 +563,6 @@ export class QuixelListener {
         material.invertNormalMapY = true;
 
         if (!Project.DirPath) {
-            return material;
-        }
-
-        const texturesAssets = this._editor.assets.getComponent(TextureAssets);
-        if (!texturesAssets) {
             return material;
         }
 
@@ -574,13 +586,14 @@ export class QuixelListener {
         }
 
         const promises = components.map(async (c) => {
-            const path = join("files", c.name);
+            const path = join(rootFolder, c.name);
             let texture: Texture;
 
             try {
                 texture = await new Promise<Texture>((resolve, reject) => {
-                    const texture = new Texture(join(Project.DirPath!, path), this._editor.scene!, false, true, undefined, () => {
-                        texturesAssets.configureTexturePath(texture);
+                    const texture = new Texture(path, this._editor.scene!, false, true, undefined, () => {
+                        texture.name = path.replace(join(this._editor.assetsBrowser.assetsDirectory, "/"), "");
+                        texture.url = texture.name;
                         resolve(texture);
                     }, (_, e) => {
                         reject(e);
@@ -615,18 +628,22 @@ export class QuixelListener {
 
         // Pack textures
         await Promise.all([
-            AlbedoOpacityPacker.Pack(this._editor, material, albedoTexture, opacityTexture),
-            ReflectivityGlossinessPacker.Pack(this._editor, material, reflectivityTexture, microSurfaceTexture),
-            MetallicRoughnessPacker.Pack(this._editor, material, metallicTexture, roughnessTexture),
-            NormalDisplacementPacker.Pack(this._editor, material, bumpTexture, displacementTexture),
+            AlbedoOpacityPacker.Pack(this._editor, material, albedoTexture, opacityTexture, rootFolder),
+            ReflectivityGlossinessPacker.Pack(this._editor, material, reflectivityTexture, microSurfaceTexture, rootFolder),
+            MetallicRoughnessPacker.Pack(this._editor, material, metallicTexture, roughnessTexture, rootFolder),
+            NormalDisplacementPacker.Pack(this._editor, material, bumpTexture, displacementTexture, rootFolder),
         ]);
 
         // Pack ao with metal
-        await MetallicAmbientPacker.Pack(this._editor, material, material.metallicTexture as Texture, aoTexture);
+        await MetallicAmbientPacker.Pack(this._editor, material, material.metallicTexture as Texture, aoTexture, rootFolder);
 
         // Add metadata
         material.metadata = {};
         material.metadata.quixelMaterialId = `${json.id}-${(options.textureSets ?? []).join("-")}`;
+        
+        // Add editor path
+        const materialJsonPath = join(rootFolder, `${material.name}.material`);
+        material.metadata.editorPath = materialJsonPath.replace(join(this._editor.assetsBrowser.assetsDirectory, "/"), "");
 
         if (json.type === "surface") {
             material.metadata.isFromQuixel = true;
@@ -637,6 +654,14 @@ export class QuixelListener {
         if (json.type === "3dplant") {
             material.useSpecularOverAlpha = false;
         }
+
+        await writeJSON(materialJsonPath, {
+            ...material.serialize(),
+            metadata: material.metadata,
+        }, {
+            spaces: "\t",
+            encoding: "utf-8",
+        });
 
         return material;
     }

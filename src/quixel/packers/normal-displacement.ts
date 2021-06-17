@@ -1,3 +1,5 @@
+import { join } from "path";
+
 import { Editor, FilesStore, TextureAssets } from "babylonjs-editor";
 import { Nullable } from "babylonjs-editor/shared/types";
 
@@ -13,8 +15,9 @@ export class NormalDisplacementPacker {
      * @param material defines the reference to the material being configured.
      * @param bumpTexture defines the reference to the reflectivity texture.
      * @param displacementTexture defines the reference to the microsurface texture.
+     * @param rootFolder defines the root folder where to write the resulted texture.
      */
-    public static async Pack(editor: Editor, material: PBRMaterial, bumpTexture: Nullable<Texture>, displacementTexture: Nullable<Texture>): Promise<void> {
+    public static async Pack(editor: Editor, material: PBRMaterial, bumpTexture: Nullable<Texture>, displacementTexture: Nullable<Texture>, rootFolder: string): Promise<void> {
         const texturesAssets = editor.assets.getComponent(TextureAssets);
         if (!texturesAssets) {
             return;
@@ -22,7 +25,7 @@ export class NormalDisplacementPacker {
 
         if (bumpTexture && displacementTexture && preferences.convertDisplacementToParallax) {
             editor.console.logInfo("Packing displacement texture in bump texture alpha channel to use parallax mapping.");
-            const packedBumpTexturePath = await TextureUtils.MergeTextures(bumpTexture, displacementTexture, (color1, color2) => ({
+            const packedBumpTexturePath = await TextureUtils.MergeTextures(bumpTexture, displacementTexture, rootFolder, (color1, color2) => ({
                 r: color1.r,
                 g: color1.g,
                 b: color1.b,
@@ -35,7 +38,8 @@ export class NormalDisplacementPacker {
 
                 const packedBumpTexture = await new Promise<Texture>((resolve, reject) => {
                     const texture = new Texture(packedBumpTexturePath, editor.scene!, false, true, undefined, () => {
-                        texturesAssets.configureTexturePath(texture);
+                        texture.name = packedBumpTexturePath.replace(join(editor.assetsBrowser.assetsDirectory, "/"), "");;
+                        texture.url = texture.name;
                         resolve(texture);
                     }, (_, e) => {
                         reject(e);

@@ -1,4 +1,6 @@
-import { Editor, FilesStore, TextureAssets } from "babylonjs-editor";
+import { join } from "path";
+
+import { Editor, FilesStore } from "babylonjs-editor";
 import { Nullable } from "babylonjs-editor/shared/types";
 
 import { PBRMaterial, Texture } from "babylonjs";
@@ -12,16 +14,12 @@ export class MetallicRoughnessPacker {
      * @param material defines the reference to the material being configured.
      * @param metallicTexture defines the reference to the metallic texture.
      * @param roughnessTexture defines the reference to the roughness texture.
+     * @param rootFolder defines the root folder where to write the resulted texture.
      */
-    public static async Pack(editor: Editor, material: PBRMaterial, metallicTexture: Nullable<Texture>, roughnessTexture: Nullable<Texture>): Promise<void> {
-        const texturesAssets = editor.assets.getComponent(TextureAssets);
-        if (!texturesAssets) {
-            return;
-        }
-
+    public static async Pack(editor: Editor, material: PBRMaterial, metallicTexture: Nullable<Texture>, roughnessTexture: Nullable<Texture>, rootFolder: string): Promise<void> {
         if (metallicTexture && roughnessTexture) {
             editor.console.logInfo("Packing roughness texture in metallic texture green channel.");
-            const packedMetallicTexturePath = await TextureUtils.MergeTextures(metallicTexture, roughnessTexture, (color1, color2) => ({
+            const packedMetallicTexturePath = await TextureUtils.MergeTextures(metallicTexture, roughnessTexture, rootFolder, (color1, color2) => ({
                 r: 0,
                 g: color2.r,
                 b: color1.r,
@@ -34,7 +32,8 @@ export class MetallicRoughnessPacker {
 
                 const packedMetallicTexture = await new Promise<Texture>((resolve, reject) => {
                     const texture = new Texture(packedMetallicTexturePath, editor.scene!, false, true, undefined, () => {
-                        texturesAssets.configureTexturePath(texture);
+                        texture.name = packedMetallicTexturePath.replace(join(editor.assetsBrowser.assetsDirectory, "/"), "");;
+                        texture.url = texture.name;
                         resolve(texture);
                     }, (_, e) => {
                         reject(e);

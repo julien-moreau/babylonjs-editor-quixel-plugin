@@ -1,4 +1,6 @@
-import { Editor, FilesStore, TextureAssets } from "babylonjs-editor";
+import { join } from "path";
+
+import { Editor, FilesStore } from "babylonjs-editor";
 import { Nullable } from "babylonjs-editor/shared/types";
 
 import { PBRMaterial, Texture } from "babylonjs";
@@ -12,16 +14,12 @@ export class ReflectivityGlossinessPacker {
      * @param material defines the reference to the material being configured.
      * @param reflectivityTexture defines the reference to the reflectivity texture.
      * @param microSurfaceTexture defines the reference to the microsurface texture.
+     * @param rootFolder defines the root folder where to write the resulted texture.
      */
-    public static async Pack(editor: Editor, material: PBRMaterial, reflectivityTexture: Nullable<Texture>, microSurfaceTexture: Nullable<Texture>): Promise<void> {
-        const texturesAssets = editor.assets.getComponent(TextureAssets);
-        if (!texturesAssets) {
-            return;
-        }
-
+    public static async Pack(editor: Editor, material: PBRMaterial, reflectivityTexture: Nullable<Texture>, microSurfaceTexture: Nullable<Texture>, rootFolder: string): Promise<void> {
         if (reflectivityTexture && microSurfaceTexture) {
             editor.console.logInfo("Packing micro surface texture in reflectivity texture alpha channel.");
-            const packedReflectivityTexturePath = await TextureUtils.MergeTextures(reflectivityTexture, microSurfaceTexture, (color1, color2) => ({
+            const packedReflectivityTexturePath = await TextureUtils.MergeTextures(reflectivityTexture, microSurfaceTexture, rootFolder, (color1, color2) => ({
                 r: color1.r,
                 g: color1.g,
                 b: color1.b,
@@ -34,7 +32,8 @@ export class ReflectivityGlossinessPacker {
 
                 const packedReflectivityTexture = await new Promise<Texture>((resolve, reject) => {
                     const texture = new Texture(packedReflectivityTexturePath, editor.scene!, false, true, undefined, () => {
-                        texturesAssets.configureTexturePath(texture);
+                        texture.name = packedReflectivityTexturePath.replace(join(editor.assetsBrowser.assetsDirectory, "/"), "");;
+                        texture.url = texture.name;
                         resolve(texture);
                     }, (_, e) => {
                         reject(e);

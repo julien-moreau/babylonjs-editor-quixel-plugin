@@ -31,9 +31,10 @@ export class TextureUtils {
      * Merges the two given textures to the desized format.
      * @param a defines the reference to the first texture.
      * @param b defines the reference to the second texture.
+     * @param rootFolder defines the root folder where to write the texture.
      * @param callback defines the callback called for each pixel that returns the final merged color.
      */
-    public static async MergeTextures(a: Texture, b: Texture, callback: (color1: IMergedColor, color2: IMergedColor) => IMergedColor): Promise<Nullable<string>> {
+    public static async MergeTextures(a: Texture, b: Texture, rootFolder: string, callback: (color1: IMergedColor, color2: IMergedColor) => IMergedColor): Promise<Nullable<string>> {
         if (!Project.DirPath) {
             return null;
         }
@@ -70,7 +71,7 @@ export class TextureUtils {
         }
 
         const name = `${basename(a.name).replace(extname(a.name), "")}_${basename(b.name).replace(extname(b.name), "")}.png`;
-        const dest = join(Project.DirPath!, "files", name);
+        const dest = join(rootFolder, name);
 
         await writeFile(dest, Buffer.from(await Tools.ReadFileAsArrayBuffer(blob)));
 
