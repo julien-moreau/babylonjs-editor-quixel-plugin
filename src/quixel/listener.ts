@@ -283,6 +283,8 @@ export class QuixelListener {
     private async _handle3dExport(json: IQuixelExport, materials: PBRMaterial[], displacement?: IQuixelComponent, atPosition?: Vector3): Promise<void> {
         const meshes = await this._createMeshes(json, json.name, json.id, json.lodList, displacement, atPosition);
         meshes.forEach((m) => {
+            m.isPickable = (m._masterMesh ?? null) === null;
+
             if (m instanceof Mesh) {
                 m.scaling.setAll(preferences.objectScale);
                 m.material = materials[m.metadata.materialId] ?? materials[0];
@@ -409,6 +411,7 @@ export class QuixelListener {
             variationsMeshes.forEach((variationMeshes) => {
                 variationMeshes.forEach((m) => {
                     m.material = effectiveMaterial;
+                    m.isPickable = (m._masterMesh ?? null) === null;
 
                     if (m.hasLODLevels) {
                         m.scaling.setAll(preferences.objectScale);
