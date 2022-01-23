@@ -45,10 +45,10 @@ export class TextureUtils {
             return null;
         }
 
-        const aBuffer = a.readPixels()?.buffer;
+        const aBuffer = (await a.readPixels())?.buffer;
         if (!aBuffer) { return null; }
 
-        const bBuffer = b.readPixels()?.buffer;
+        const bBuffer = (await b.readPixels())?.buffer;
         if (!bBuffer) { return null; }
 
         const aPixels = new Uint8ClampedArray(aBuffer);
@@ -97,7 +97,7 @@ export class TextureUtils {
      * @param texture defines the reference to the texture to convert ot a png blob.
      */
     public static async GetTextureBlob(texture: Texture): Promise<Nullable<Blob>> {
-        const buffer = texture.readPixels()?.buffer;
+        const buffer = (await texture.readPixels())?.buffer;
         if (!buffer) { return null; }
 
         const pixels = new Uint8ClampedArray(buffer);
