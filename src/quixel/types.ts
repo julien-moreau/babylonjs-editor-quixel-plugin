@@ -77,7 +77,7 @@ export interface IQuixelExport {
     /**
      * Defines the type of asset.
      */
-    type: "3d" | "surface" | "atlas" | "3dplant";
+    type: "3d" | "surface" | "atlas" | "3dplant" | "brush";
     /**
      * Defines the list of all meshes available.
      */

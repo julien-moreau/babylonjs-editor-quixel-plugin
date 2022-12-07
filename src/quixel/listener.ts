@@ -79,6 +79,8 @@ export class QuixelListener {
         "gloss", "ao", "metalness",
         "opacity", "roughness", "mask",
         "translucency", "displacement",
+
+        "brush",
     ];
 
     private _editor: Editor;
@@ -123,7 +125,7 @@ export class QuixelListener {
             // Copy textures
             this._editor.updateTaskFeedback(task, 0, "Quixel: Copying textures...");
             this._editor.console.logSection("Quixel: Copy textures");
-            
+
             for (const q of this._queue) {
                 await this._createAssetsDirectories(q);
             }
@@ -144,7 +146,7 @@ export class QuixelListener {
 
         // Notify done
         this._editor.console.logInfo("Done!");
-        
+
         this._editor.updateTaskFeedback(task, 100, "Done!");
         this._editor.closeTaskFeedback(task, 1000);
 
@@ -255,6 +257,10 @@ export class QuixelListener {
      * Called to handle the given json export according to its type.
      */
     private async _handleExport(json: IQuixelExport, atPosition?: Vector3): Promise<void> {
+        if (json.type === "brush") {
+            return;
+        }
+
         // A material exists in any cases
         const displacement = json.components.find((c) => c.type === "displacement");
 
@@ -648,6 +654,8 @@ export class QuixelListener {
             components = components.filter((c) => c.textureSets?.find((ts) => options.textureSets?.indexOf(ts) !== -1));
         }
 
+        const metallicRoughnessComponent = components.find((c) => c.type === "metalness" || c.type === "roughness");
+
         const promises = components.map(async (c) => {
             const path = join(rootFolder, c.name);
             let texture: Texture;
@@ -674,8 +682,18 @@ export class QuixelListener {
                 case "normal": bumpTexture = texture; break;
                 case "displacement": displacementTexture = texture; break;
 
-                case "specular": reflectivityTexture = texture; break;
-                case "gloss": microSurfaceTexture = texture; break;
+                case "specular":
+                    if (!metallicRoughnessComponent) {
+                        reflectivityTexture = texture;
+                    }
+                    break;
+
+                case "gloss":
+                    if (!metallicRoughnessComponent) {
+                        microSurfaceTexture = texture;
+                    }
+                    break;
+
                 case "metalness": metallicTexture = texture; break;
                 case "roughness": roughnessTexture = texture; break;
                 case "ao": aoTexture = texture; break;
