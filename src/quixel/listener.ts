@@ -32,7 +32,7 @@ export interface IParsedMesh {
     /**
      * Defines the reference to the list of meshes for the current variation.
      */
-    meshes: { index: number; mesh: Mesh }[];
+    meshes: { index: number; mesh: Mesh; }[];
 }
 
 export interface IMaterialOptions {
@@ -218,6 +218,11 @@ export class QuixelListener {
                 await copyFile(c.path, path);
 
                 return this._editor.console.logInfo(`Copied texture "${c.name}" at ${path}`);
+            }
+
+            // Check texture
+            if (c.type === "specular" && json.components.find((c) => c.type === "roughness")) {
+                return;
             }
 
             // Resize to lower resolution
@@ -501,6 +506,8 @@ export class QuixelListener {
             const path = lod.path.replace(/\\/g, "/");
             const result = await SceneLoader.ImportMeshAsync("", join(dirname(path), "/"), basename(path), this._editor.scene!);
 
+            result.transformNodes.forEach((tn) => tn.dispose(true, true));
+
             result.meshes.forEach((m, index) => {
                 let variation = parsedMeshes.find((pm) => pm.index === index);
                 if (!variation) {
@@ -667,6 +674,7 @@ export class QuixelListener {
                         texture.url = texture.name;
                         resolve(texture);
                     }, (_, e) => {
+                        texture.dispose();
                         reject(e);
                     });
                 });
