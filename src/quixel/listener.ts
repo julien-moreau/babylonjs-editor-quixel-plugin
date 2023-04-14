@@ -6,7 +6,7 @@ import { Nullable } from "babylonjs-editor/shared/types";
 
 import {
     Mesh, Vector3, SceneLoader, PBRMaterial, Texture, Quaternion, Observable,
-    NodeMaterial, CopyTools, BaseTexture, Material,
+    NodeMaterial, CopyTools, BaseTexture, Material, DirectionalLight,
 } from "babylonjs";
 
 import { QuixelServer } from "./server";
@@ -411,6 +411,9 @@ export class QuixelListener {
                     };
 
                     this._editor.scene!.lights.forEach((l) => {
+                        if (!(l instanceof DirectionalLight)) {
+                            return;
+                        }
                         l.getShadowGenerator()?.getShadowMap()?.renderList?.push(mesh);
                     });
                 } else {
@@ -563,6 +566,9 @@ export class QuixelListener {
                     }
 
                     return this._editor.scene!.lights.forEach((l) => {
+                        if (!(l instanceof DirectionalLight)) {
+                            return;
+                        }
                         l.getShadowGenerator()?.getShadowMap()?.renderList?.push(m.mesh);
                     });
                 }
